@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Builds
+dist/
+dist-ssr/
+*.local
+
+# Environment variables
+.env
+sessions_cache.json
