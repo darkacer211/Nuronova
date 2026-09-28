@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "NeuroNova — Multimodal Cognitive Neuro-Analytics & Dual-Track AuDHD Screening",
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
     "dev": "npm run dev --prefix frontend",
     "build": "npm run build --prefix frontend",
