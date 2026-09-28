@@ -97,7 +97,8 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
     return { label: 'Elevated Friction Observed', color: 'var(--rose-primary)', badge: 'badge-rose' };
   };
 
-  const cpiDesc = getCpiDescriptor(cpi_score);
+  const isPediatricOnly = !tasks.pvt && screening?.participant?.isChild;
+  const mchatResult = screening?.results?.find((r) => r.testId === 'mchat') || screening?.results?.[0];
 
   return (
     <div style={{ maxWidth: '1140px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -114,15 +115,17 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
             </span>
             {screening?.participant && (
               <span className="badge-pill badge-violet">
-                {screening.participant.isChild ? 'Pediatric Assessment' : 'Adult Assessment'}
+                {screening.participant.isChild ? 'Pediatric Assessment (Parent Assisted)' : 'Adult Assessment'}
               </span>
             )}
           </div>
           <h2 style={{ fontSize: '2.1rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
-            NeuroNova Comprehensive Diagnostic Profile
+            {isPediatricOnly ? 'Pediatric Developmental Screening Report' : 'NeuroNova Comprehensive Diagnostic Profile'}
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '4px' }}>
-            Automated psychometrics, vision telemetry, and validated behavioral screener outcomes.
+            {isPediatricOnly
+              ? 'Parent-assisted developmental milestone evaluation (M-CHAT-R/F) for early childhood.'
+              : 'Automated psychometrics, vision telemetry, and validated behavioral screener outcomes.'}
           </p>
         </div>
 
@@ -139,16 +142,23 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
       </div>
 
       {/* =========================================================================
-          SECTION FILTER PILLS (For uncluttered viewing)
+          SECTION FILTER PILLS
          ========================================================================= */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: 'var(--radius-full)', border: '1px solid var(--border-subtle)' }}>
-        {[
-          { id: 'all', label: 'Complete Overview' },
-          { id: 'cognitive', label: 'Cognitive Test Results' },
-          { id: 'vision', label: 'Camera & Vision Telemetry' },
-          { id: 'screening', label: 'AuDHD Behavioral Screener' },
-          { id: 'ai_insights', label: 'AI Explanations & Action Plan' },
-        ].map((tab) => (
+        {(isPediatricOnly
+          ? [
+              { id: 'all', label: 'Complete Report' },
+              { id: 'screening', label: 'Toddler Milestone Screener' },
+              { id: 'ai_insights', label: 'Pediatrician Action Plan' },
+            ]
+          : [
+              { id: 'all', label: 'Complete Overview' },
+              { id: 'cognitive', label: 'Cognitive Test Results' },
+              { id: 'vision', label: 'Camera & Vision Telemetry' },
+              { id: 'screening', label: 'AuDHD Behavioral Screener' },
+              { id: 'ai_insights', label: 'AI Explanations & Action Plan' },
+            ]
+        ).map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveSection(tab.id)}
@@ -170,9 +180,45 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
       </div>
 
       {/* =========================================================================
-          2. HERO EXECUTIVE SCORECARD (CPI + 4 Domains)
+          2. HERO SCORECARD (Pediatric Dedicated vs Adult Cognitive CPI)
          ========================================================================= */}
-      {(activeSection === 'all' || activeSection === 'cognitive') && (
+      {isPediatricOnly ? (
+        <div className="glass-panel" style={{ padding: '32px', borderLeft: '5px solid var(--violet-primary)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <Baby size={22} color="var(--violet-glow)" />
+                <span className="badge-pill badge-violet">M-CHAT-R/F Validated</span>
+                <span className="badge-pill badge-emerald">Direct Parent Observation</span>
+              </div>
+              <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#ffffff' }}>
+                Toddler Developmental Milestone Evaluation
+              </h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '4px' }}>
+                Completed for {screening?.participant?.targetName || 'Child'} ({screening?.participant?.ageGroup || '16–30 months'}). Computer reflex tasks were appropriately bypassed.
+              </p>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <div className="mono-num" style={{ fontSize: '2.8rem', fontWeight: 800, color: mchatResult?.isPositive ? 'var(--rose-primary)' : 'var(--emerald-glow)' }}>
+                {mchatResult?.totalScore ?? 0} <span style={{ fontSize: '1.2rem', color: 'var(--text-dim)', fontWeight: 500 }}>/ 20</span>
+              </div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 700, textTransform: 'uppercase', color: mchatResult?.isPositive ? 'var(--rose-primary)' : 'var(--emerald-glow)' }}>
+                Risk Tier: {mchatResult?.riskLevel ?? 'Low'} Risk
+              </div>
+            </div>
+          </div>
+
+          <div style={{ background: mchatResult?.isPositive ? 'rgba(244, 63, 94, 0.1)' : 'rgba(16, 185, 129, 0.08)', border: mchatResult?.isPositive ? '1px solid rgba(244, 63, 94, 0.3)' : '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 'var(--radius-md)', padding: '18px 22px' }}>
+            <div style={{ fontWeight: 700, fontSize: '1.05rem', color: mchatResult?.isPositive ? 'var(--rose-primary)' : 'var(--emerald-glow)', marginBottom: '6px' }}>
+              {mchatResult?.headline || 'Toddler Developmental Milestone Outcome'}
+            </div>
+            <p style={{ fontSize: '0.92rem', color: 'var(--text-main)', lineHeight: 1.6, margin: 0 }}>
+              {mchatResult?.summary}
+            </p>
+          </div>
+        </div>
+      ) : (activeSection === 'all' || activeSection === 'cognitive') && (
         <div className="grid-2" style={{ gap: '24px' }}>
           {/* CPI Main Score Panel */}
           <div className="glass-panel" style={{ padding: '32px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -292,7 +338,7 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
       {/* =========================================================================
           3. INDIVIDUAL TEST-BY-TEST OUTCOMES (All 4 Cognitive Tasks Clearly Visible)
          ========================================================================= */}
-      {(activeSection === 'all' || activeSection === 'cognitive') && (
+      {(activeSection === 'all' || activeSection === 'cognitive') && !isPediatricOnly && (
         <div className="glass-panel" style={{ padding: '32px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
             <div>
@@ -540,7 +586,7 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
       {/* =========================================================================
           4. ON-DEVICE CAMERA & OCULOMOTOR BIOMARKER VERIFICATION
          ========================================================================= */}
-      {(activeSection === 'all' || activeSection === 'vision') && (
+      {(activeSection === 'all' || activeSection === 'vision') && !isPediatricOnly && (
         <div className="glass-panel" style={{ padding: '32px', borderLeft: '4px solid var(--emerald-primary)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

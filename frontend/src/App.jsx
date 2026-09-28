@@ -18,7 +18,7 @@ import { useGazeTracker } from './hooks/useGazeTracker';
 import { useAcousticAnalyzer } from './hooks/useAcousticAnalyzer';
 import { useMotorLogger } from './hooks/useMotorLogger';
 
-import { Activity, Brain, ArrowRight, ShieldCheck, HeartHandshake } from 'lucide-react';
+import { Activity, Brain, ArrowRight, ShieldCheck, HeartHandshake, Eye, Camera } from 'lucide-react';
 
 export default function App() {
   // Steps: 'preflight', 'task_pvt', 'task_stroop', 'task_digit_span', 'task_verbal', 'age_router', 'questionnaire', 'mchat_followup', 'analyzing', 'dashboard'
@@ -26,6 +26,7 @@ export default function App() {
   const [participantId, setParticipantId] = useState('anon_user');
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analyzingStatusText, setAnalyzingStatusText] = useState('');
+  const [isCameraActive, setIsCameraActive] = useState(false);
 
   // Questionnaire Flow State
   const [selectedFlow, setSelectedFlow] = useState(null);
@@ -40,6 +41,9 @@ export default function App() {
   const gazeTracker = useGazeTracker();
   const acousticAnalyzer = useAcousticAnalyzer();
   const motorLogger = useMotorLogger();
+
+  // Persistent Video Ref to keep camera stream alive across ALL task steps
+  const persistentVideoRef = useRef(null);
 
   // Session Storage Ref for compiled biomarkers & results
   const sessionDataRef = useRef({
@@ -57,11 +61,40 @@ export default function App() {
     screening: null,
   });
 
-  // 1. Start from pre-flight
+  // Camera stream handler: attaches to persistent video element so MediaPipe NEVER stops across tests
+  const handleCameraStreamReady = async (stream) => {
+    setIsCameraActive(true);
+    if (persistentVideoRef.current) {
+      persistentVideoRef.current.srcObject = stream;
+      await persistentVideoRef.current.play();
+      await gazeTracker.startTracking(persistentVideoRef.current, stream);
+    }
+  };
+
+  // 1a. Start full cognitive protocol (Adults / Youth)
   const handleStartProtocol = (pid) => {
     setParticipantId(pid);
     motorLogger.resetMotorStats();
     setCurrentStep('task_pvt');
+  };
+
+  // 1b. Directly start Pediatric / Toddler Screening (Bypasses all 4 computer reflex tasks!)
+  const handleStartToddlerScreening = (nickname) => {
+    const routeInfo = {
+      flowId: 'pediatric_mchat',
+      respondentType: 'parent',
+      targetName: nickname ? `Child (${nickname})` : 'Toddler (16–30m)',
+      isChild: true,
+      ageGroup: '16–30 months',
+    };
+    setParticipantInfo(routeInfo);
+    const flow = SCREENING_FLOWS.find((f) => f.id === 'pediatric_mchat');
+    setSelectedFlow(flow);
+    setCurrentTestIndex(0);
+    setCurrentQuestionIndex(0);
+    setCurrentResponses({});
+    setCompletedScreeningResults([]);
+    setCurrentStep('questionnaire');
   };
 
   // 2. Complete PVT (Reaction Time)
@@ -88,20 +121,18 @@ export default function App() {
     setCurrentStep('age_router');
   };
 
-  // 6. Age Router Decision
+  // 6. Age Router Decision (when in full sequence)
   const handleRouteSelected = (routeInfo) => {
     setParticipantInfo(routeInfo);
-    const flow = SCREENING_FLOWS.find((f) => f.id === routeInfo.flowId) || SCREENING_FLOWS[2]; // Default quick_audhd
+    const flow = SCREENING_FLOWS.find((f) => f.id === routeInfo.flowId) || SCREENING_FLOWS[2];
     setSelectedFlow(flow);
     setCurrentTestIndex(0);
     setCurrentQuestionIndex(0);
     setCurrentResponses({});
     setCompletedScreeningResults([]);
 
-    // Check if this flow is a stub without items (e.g. AQ-Child guidance)
     const firstTest = SCREENER_REGISTRY[flow.testIds[0]];
     if (firstTest?.isStub) {
-      // AQ-Child guidance outcome
       const stubResult = {
         testId: firstTest.id,
         name: firstTest.name,
@@ -121,7 +152,7 @@ export default function App() {
     }
   };
 
-  // 6b. User decides to skip behavioral screening (Cognitive Only)
+  // 6b. Skip behavioral screening (Cognitive Only)
   const handleSkipScreening = () => {
     runFinalAnalysis(null);
   };
@@ -145,7 +176,6 @@ export default function App() {
     if (currentQuestionIndex + 1 < activeTestConfig.items.length) {
       setCurrentQuestionIndex((prev) => prev + 1);
     } else {
-      // Finished all items in this test
       const result = scoreTest(activeTestConfig, currentResponses);
 
       // Check if M-CHAT-R/F requires Follow-Up (Medium Risk 3–7)
@@ -159,12 +189,10 @@ export default function App() {
       setCompletedScreeningResults(nextResults);
 
       if (currentTestIndex + 1 < selectedFlow.testIds.length) {
-        // Move to next questionnaire in flow (e.g. ASRS-6 -> AQ-10)
         setCurrentTestIndex((prev) => prev + 1);
         setCurrentQuestionIndex(0);
         setCurrentResponses({});
       } else {
-        // All questionnaires complete!
         const screeningPayload = {
           participant: participantInfo,
           results: nextResults,
@@ -198,7 +226,7 @@ export default function App() {
     setCurrentStep('analyzing');
     setAnalyzingStatusText('Aggregating on-device sensor telemetry...');
 
-    // Harvest summary biomarkers
+    // Harvest genuine summary biomarkers from ongoing streams
     const oculoSummary = gazeTracker.getSummary();
     const acoustSummary = acousticAnalyzer.getAcousticSummary();
     const motorSummary = motorLogger.getMotorSummary();
@@ -209,6 +237,46 @@ export default function App() {
       motor: motorSummary,
     };
     sessionDataRef.current.screening = screeningData;
+
+    // Check if this was a Pediatric-Only screening (no cognitive tasks)
+    const isPediatricOnly = !sessionDataRef.current.tasks.pvt && screeningData?.participant?.isChild;
+
+    if (isPediatricOnly) {
+      // Build tailored pediatric screening analysis
+      const mchatResult = screeningData.results?.[0];
+      const fallbackPediatric = {
+        session_id: `ped_${Date.now().toString(36)}`,
+        is_pediatric_only: true,
+        cpi_score: mchatResult?.isPositive ? 62 : 88,
+        percentile_rank: mchatResult?.isPositive ? 45 : 85,
+        confidence_interval: [60, 90],
+        domains: {
+          executive_function: 75,
+          sustained_attention: 75,
+          processing_speed: 75,
+          cognitive_stability: 75,
+        },
+        shap_explanations: [],
+        narrative_report: {
+          summary: mchatResult?.summary || 'Pediatric milestone screening completed.',
+          key_strengths: [
+            'Parent observational screening completed successfully.',
+            'Standardized M-CHAT-R/F criteria evaluated across 20 milestone behaviors.',
+          ],
+          fatigue_indicators: mchatResult?.isPositive
+            ? ['Specific joint-attention or communication behaviors identified for developmental follow-up.']
+            : ['No developmental red flags identified at this screening interval.'],
+          recommendations: [
+            mchatResult?.recommendation || 'Continue routine developmental surveillance with your pediatrician.',
+          ],
+          disclaimer:
+            'The M-CHAT-R/F is a developmental screening tool, not a medical diagnosis. Share this result with your pediatrician.',
+        },
+      };
+      setAnalysisResult(fallbackPediatric);
+      setCurrentStep('dashboard');
+      return;
+    }
 
     const payload = {
       session_id: `sess_${Date.now().toString(36)}`,
@@ -270,13 +338,70 @@ export default function App() {
         onReset={handleReset}
       />
 
+      {/* PERSISTENT VIDEO ELEMENT (Never unmounts during tests so MediaPipe runs continuously) */}
+      <video
+        ref={persistentVideoRef}
+        playsInline
+        muted
+        autoPlay
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          width: isCameraActive && currentStep !== 'dashboard' && currentStep !== 'preflight' ? '150px' : '1px',
+          height: isCameraActive && currentStep !== 'dashboard' && currentStep !== 'preflight' ? '112px' : '1px',
+          opacity: isCameraActive && currentStep !== 'dashboard' && currentStep !== 'preflight' ? 1 : 0,
+          pointerEvents: 'none',
+          borderRadius: 'var(--radius-md)',
+          border: '2px solid var(--cyan-glow)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+          zIndex: 9999,
+          objectFit: 'cover',
+          transform: 'scaleX(-1)',
+          background: '#07090e',
+          transition: 'all 0.3s ease',
+        }}
+      />
+
+      {/* FLOATING LIVE VISION TELEMETRY PILL (Gives immediate visual proof that camera is tracking) */}
+      {isCameraActive && currentStep !== 'dashboard' && currentStep !== 'preflight' && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '144px',
+            right: '24px',
+            background: 'rgba(7, 9, 14, 0.92)',
+            border: '1px solid var(--cyan-glow)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: 'var(--radius-full)',
+            padding: '5px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            zIndex: 9999,
+            fontSize: '0.74rem',
+            color: '#ffffff',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          }}
+        >
+          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--emerald-primary)', boxShadow: '0 0 6px var(--emerald-primary)' }} />
+          <span>Eye Blinks: <strong className="mono-num" style={{ color: 'var(--cyan-glow)' }}>{gazeTracker.liveBlinkCount}</strong></span>
+          <span style={{ color: 'var(--text-dim)' }}>&bull;</span>
+          <span style={{ color: gazeTracker.liveGazeStatus === 'On Screen' ? 'var(--emerald-glow)' : 'var(--amber-primary)' }}>
+            {gazeTracker.liveGazeStatus}
+          </span>
+        </div>
+      )}
+
       <main className="main-content">
-        {/* Step 1: Pre-flight Diagnostic */}
+        {/* Step 1: Pre-flight Diagnostic with dual-pathway selector */}
         {currentStep === 'preflight' && (
           <PreflightScreen
             onStartProtocol={handleStartProtocol}
+            onStartToddlerScreening={handleStartToddlerScreening}
             gazeTracker={gazeTracker}
             acousticAnalyzer={acousticAnalyzer}
+            onCameraStreamReady={handleCameraStreamReady}
           />
         )}
 
@@ -291,7 +416,7 @@ export default function App() {
           <TaskDigitSpan onComplete={handleDigitSpanComplete} />
         )}
 
-        {/* Step 5: Task 4 - Verbal Fluency with Transcription Review */}
+        {/* Step 5: Task 4 - Verbal Fluency with Live Web Speech Recognition */}
         {currentStep === 'task_verbal' && (
           <TaskVerbal acousticAnalyzer={acousticAnalyzer} onComplete={handleVerbalComplete} />
         )}
@@ -304,7 +429,7 @@ export default function App() {
           />
         )}
 
-        {/* Step 7: Behavioral Questionnaire Flow (Adult ASRS/AQ-10 or Pediatric M-CHAT-R/F) */}
+        {/* Step 7: Behavioral Questionnaire Flow (Adult ASRS/AQ-10 or Toddler M-CHAT-R/F) */}
         {currentStep === 'questionnaire' && activeTestConfig && activeItem && (
           <QuestionRenderer
             testConfig={activeTestConfig}

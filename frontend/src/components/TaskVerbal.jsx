@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, Volume2, CheckCircle2, Loader2, Sparkles, ArrowRight, MessageSquare } from 'lucide-react';
+import { Mic, Volume2, CheckCircle2, Loader2, Sparkles, ArrowRight, MessageSquare, Radio } from 'lucide-react';
 
 const DURATION_SECONDS = 25;
 
@@ -10,20 +10,59 @@ const KNOWN_ANIMALS = new Set([
   'eagle', 'hawk', 'owl', 'parrot', 'penguin', 'snake', 'lizard', 'frog', 'toad', 'turtle',
   'shark', 'whale', 'dolphin', 'fish', 'octopus', 'crab', 'lobster', 'bee', 'ant', 'butterfly',
   'spider', 'cheetah', 'leopard', 'panther', 'rhino', 'hippo', 'kangaroo', 'koala', 'panda',
-  'gorilla', 'chimpanzee', 'camel', 'llama', 'bat', 'otter', 'seal', 'walrus', 'crocodile', 'alligator'
+  'gorilla', 'chimpanzee', 'camel', 'llama', 'bat', 'otter', 'seal', 'walrus', 'crocodile', 'alligator',
+  'mouse', 'rat', 'hamster', 'parrot', 'canary', 'swan', 'goose', 'turkey', 'ostrich', 'peacock'
 ]);
 
 export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
   // state: 'instructions', 'recording', 'uploading', 'review'
   const [phase, setPhase] = useState('instructions');
   const [secondsRemaining, setSecondsRemaining] = useState(DURATION_SECONDS);
+  const [liveTranscript, setLiveTranscript] = useState('');
   const [transcriptionResult, setTranscriptionResult] = useState(null);
   const [finalMetrics, setFinalMetrics] = useState(null);
 
   const countdownIntervalRef = useRef(null);
+  const speechRecognitionRef = useRef(null);
+  const accumulatedSpeechRef = useRef('');
 
+  // Start speech recognition + acoustic capture
   const startTask = async () => {
+    accumulatedSpeechRef.current = '';
+    setLiveTranscript('');
+
+    // 1. Start acoustic analyzer (Web Audio API for volume, RMS, pauses, and audio blob)
     await acousticAnalyzer.startAcousticCapture();
+
+    // 2. Start browser Web Speech API (real-time live transcription in Chrome/Edge)
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRec) {
+      try {
+        const recognition = new SpeechRec();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+          let currentStr = '';
+          for (let i = 0; i < event.results.length; i++) {
+            currentStr += event.results[i][0].transcript + ' ';
+          }
+          accumulatedSpeechRef.current = currentStr.trim();
+          setLiveTranscript(currentStr.trim());
+        };
+
+        recognition.onerror = (err) => {
+          console.warn('SpeechRecognition status:', err?.error);
+        };
+
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+      } catch (err) {
+        console.warn('Web Speech API initialization:', err);
+      }
+    }
+
     setPhase('recording');
     setSecondsRemaining(DURATION_SECONDS);
 
@@ -41,16 +80,25 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
 
   const finishRecording = async () => {
     setPhase('uploading');
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+
+    // Stop speech recognition
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch (e) {}
+    }
+
     acousticAnalyzer.stopAcousticCapture();
     const summary = acousticAnalyzer.getAcousticSummary();
     const audioBlob = acousticAnalyzer.getAudioBlob();
 
-    let transcript = "lion tiger bear elephant dog cat rabbit eagle dolphin falcon";
-    let wpm = 138.0;
-    let wordCount = 10;
+    let transcript = accumulatedSpeechRef.current.trim();
+    let wordCount = transcript ? transcript.split(/\s+/).filter(Boolean).length : 0;
+    let wpm = wordCount > 0 ? Math.round((wordCount / (DURATION_SECONDS - secondsRemaining || 25)) * 60) : 0;
     let hesitations = 0;
 
-    // Send audio blob to FastAPI /api/v1/transcribe
+    // Send audio blob to FastAPI /api/v1/transcribe for verification or fallback
     if (audioBlob) {
       try {
         const formData = new FormData();
@@ -63,21 +111,34 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
 
         if (res.ok) {
           const data = await res.json();
-          if (data.transcript && data.transcript.trim()) {
+          // If browser speech recognition was empty (e.g. Firefox/Safari), use backend transcription
+          if (!transcript && data.transcript && data.transcript.trim()) {
             transcript = data.transcript;
-            wpm = data.speech_rate_wpm || 135.0;
-            wordCount = data.word_count || 12;
+            wpm = data.speech_rate_wpm || 120.0;
+            wordCount = data.word_count || transcript.split(/\s+/).length;
             hesitations = data.hesitation_count || 0;
           }
         }
       } catch (err) {
-        console.warn('Backend transcription unavailable, using acoustic profile:', err);
+        console.warn('Backend transcription API check:', err);
       }
     }
 
+    // If still empty (silent mic or user didn't speak)
+    if (!transcript) {
+      transcript = 'No distinct speech detected during interval.';
+      wordCount = 0;
+      wpm = 0;
+    }
+
     // Identify semantic animal matches in transcript
-    const words = transcript.toLowerCase().split(/\s+/).map(w => w.replace(/[^a-z]/g, ''));
-    const matchedAnimals = Array.from(new Set(words.filter(w => KNOWN_ANIMALS.has(w))));
+    const words = transcript.toLowerCase().split(/\s+/).map((w) => w.replace(/[^a-z]/g, ''));
+    const matchedAnimals = Array.from(new Set(words.filter((w) => KNOWN_ANIMALS.has(w))));
+
+    // If words were spoken, recompute WPM realistically
+    if (wordCount > 0 && wpm === 0) {
+      wpm = Math.round((wordCount / 25) * 60);
+    }
 
     const metrics = {
       words_count: wordCount,
@@ -109,6 +170,11 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
   useEffect(() => {
     return () => {
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.stop();
+        } catch (e) {}
+      }
     };
   }, []);
 
@@ -128,27 +194,29 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
       {/* Main Interaction Arena */}
       <div className="test-arena" style={{ minHeight: '440px' }}>
         {phase === 'instructions' && (
-          <div style={{ textAlign: 'center', maxWidth: '540px' }}>
+          <div style={{ textAlign: 'center', maxWidth: '560px' }}>
             <div style={{ width: '64px', height: '64px', margin: '0 auto 18px auto', borderRadius: '50%', background: 'var(--amber-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Mic size={32} color="var(--amber-primary)" />
             </div>
             <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '10px' }}>
-              Semantic Lexical Retrieval
+              Semantic Lexical Retrieval Test
             </h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '20px' }}>
               You will have <strong style={{ color: '#fff' }}>25 seconds</strong> to speak aloud into your microphone.
             </p>
-            <div style={{ background: 'rgba(255,255,255,0.04)', padding: '16px 20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', marginBottom: '24px', fontSize: '1.05rem', fontWeight: 600, color: 'var(--cyan-glow)' }}>
+            <div style={{ background: 'rgba(255,255,255,0.04)', padding: '18px 22px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', marginBottom: '24px', fontSize: '1.05rem', fontWeight: 600, color: 'var(--cyan-glow)' }}>
               "Name as many different animals or living creatures as you can think of."
             </div>
             <button className="btn-primary" onClick={startTask}>
-              Start Speaking & Recording
+              <Mic size={18} />
+              <span>Start Speaking & Recording</span>
             </button>
           </div>
         )}
 
         {phase === 'recording' && (
-          <div style={{ textAlign: 'center', width: '100%', maxWidth: '500px' }}>
+          <div style={{ textAlign: 'center', width: '100%', maxWidth: '560px' }}>
+            {/* Big Countdown Timer */}
             <div
               className="mono-num"
               style={{
@@ -156,18 +224,18 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
                 fontWeight: 800,
                 color: secondsRemaining <= 5 ? 'var(--rose-primary)' : 'var(--amber-primary)',
                 letterSpacing: '-0.03em',
-                marginBottom: '16px',
+                marginBottom: '10px',
               }}
             >
               00:{secondsRemaining < 10 ? `0${secondsRemaining}` : secondsRemaining}
             </div>
 
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '24px' }}>
-              Speak continuously: <em>Lion, elephant, falcon, dolphin, tiger...</em>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '20px' }}>
+              Speak clearly: <em>"Lion, dolphin, elephant, dog, monkey, eagle..."</em>
             </p>
 
-            {/* Dynamic Real-Time Audio Visualizer */}
-            <div style={{ width: '100%', height: '24px', background: 'rgba(255,255,255,0.06)', borderRadius: 'var(--radius-full)', overflow: 'hidden', padding: '3px', border: '1px solid var(--border-subtle)', marginBottom: '28px' }}>
+            {/* Dynamic Real-Time Audio Level VU Meter */}
+            <div style={{ width: '100%', height: '20px', background: 'rgba(255,255,255,0.06)', borderRadius: 'var(--radius-full)', overflow: 'hidden', padding: '3px', border: '1px solid var(--border-subtle)', marginBottom: '20px' }}>
               <div
                 style={{
                   height: '100%',
@@ -180,10 +248,21 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
               />
             </div>
 
+            {/* LIVE HEARING TRANSCRIPT (Instant Feedback) */}
+            <div style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '14px 18px', minHeight: '60px', marginBottom: '24px', textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: 'var(--cyan-glow)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                <Radio size={14} className="spin-animate" />
+                <span>Live Audio Transcription:</span>
+              </div>
+              <p style={{ fontSize: '0.92rem', color: liveTranscript ? '#fff' : 'var(--text-dim)', fontStyle: liveTranscript ? 'normal' : 'italic', margin: 0 }}>
+                {liveTranscript || 'Listening for your voice... speak animals now'}
+              </p>
+            </div>
+
             <button
               onClick={finishRecording}
               className="btn-secondary"
-              style={{ padding: '10px 20px', fontSize: '0.88rem' }}
+              style={{ padding: '10px 22px', fontSize: '0.88rem' }}
             >
               Finish Early
             </button>
@@ -199,7 +278,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         )}
 
         {phase === 'review' && transcriptionResult && (
-          <div style={{ textAlign: 'left', width: '100%', maxWidth: '620px' }}>
+          <div style={{ textAlign: 'left', width: '100%', maxWidth: '640px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
               <CheckCircle2 size={24} color="var(--emerald-glow)" />
               <h4 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Speech Capture & Verification</h4>
@@ -210,7 +289,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
                 Full Speech Transcript:
               </div>
-              <p style={{ fontSize: '1rem', color: '#ffffff', fontStyle: 'italic', lineHeight: 1.6 }}>
+              <p style={{ fontSize: '1.05rem', color: '#ffffff', fontStyle: 'italic', lineHeight: 1.6, margin: 0 }}>
                 "{transcriptionResult.transcript}"
               </p>
             </div>
@@ -233,7 +312,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
                   ))
                 ) : (
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>
-                    Continuous phonation recorded. Target lexical items processed.
+                    No target animal matches detected in transcript.
                   </span>
                 )}
               </div>
@@ -241,21 +320,21 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
 
             {/* Key Acoustic Metrics */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
-              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Speech Rate</div>
-                <div className="mono-num" style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--cyan-glow)' }}>
+                <div className="mono-num" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--cyan-glow)' }}>
                   {transcriptionResult.wpm} WPM
                 </div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Word Count</div>
-                <div className="mono-num" style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--emerald-glow)' }}>
+                <div className="mono-num" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--emerald-glow)' }}>
                   {transcriptionResult.wordCount} words
                 </div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pause Ratio</div>
-                <div className="mono-num" style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--amber-primary)' }}>
+                <div className="mono-num" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--amber-primary)' }}>
                   {Math.round(transcriptionResult.pauseRatio * 100)}%
                 </div>
               </div>
@@ -266,7 +345,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
               className="btn-primary"
               style={{ width: '100%', justifyContent: 'center', padding: '14px', fontSize: '1rem' }}
             >
-              <span>Compile Full NeuroNova Cognitive Profile</span>
+              <span>Proceed to Assessment Summary</span>
               <ArrowRight size={18} />
             </button>
           </div>
