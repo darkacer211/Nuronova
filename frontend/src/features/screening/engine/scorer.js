@@ -4,12 +4,11 @@
  * - asrs_dual: Shaded-box criteria + continuous sum
  * - aq10_binary: Agree vs disagree keyed binary summation
  * - catq_likert: 7-point Likert scale with reverse scoring & 3 subscales
+ * - mchat_scoring: M-CHAT-R/F 20 yes/no items with reverse keys & medium-risk follow-up logic
  */
 
 /**
  * Score ASRS v1.1 6Q
- * @param {Object} testConfig - asrs6 config
- * @param {Object} responses - map of item ID to response value (0-4)
  */
 export function scoreASRS6(testConfig, responses) {
   let shadedCount = 0;
@@ -63,8 +62,6 @@ export function scoreASRS6(testConfig, responses) {
 
 /**
  * Score AQ-10 Adult Autism
- * @param {Object} testConfig - aq10 config
- * @param {Object} responses - map of item ID to string value ('definitely_agree', etc.)
  */
 export function scoreAQ10(testConfig, responses) {
   let totalScore = 0;
@@ -115,8 +112,6 @@ export function scoreAQ10(testConfig, responses) {
 
 /**
  * Score CAT-Q Camouflaging
- * @param {Object} testConfig - catq config
- * @param {Object} responses - map of item ID to numeric value (1-7)
  */
 export function scoreCATQ(testConfig, responses) {
   let totalScore = 0;
@@ -132,7 +127,6 @@ export function scoreCATQ(testConfig, responses) {
   testConfig.items.forEach((item) => {
     const rawVal = responses[item.id] !== undefined ? Number(responses[item.id]) : 4;
     const isReverse = reverseSet.has(item.number);
-    // 7-point Likert reverse score formula: 8 - rawVal
     const finalScore = isReverse ? 8 - rawVal : rawVal;
 
     totalScore += finalScore;
@@ -192,9 +186,102 @@ export function scoreCATQ(testConfig, responses) {
 }
 
 /**
+ * Score M-CHAT-R/F (16–30 months)
+ * @param {Object} testConfig - mchat config
+ * @param {Object} responses - map of item ID to 'yes' / 'no'
+ * @param {Object} followUpResponses - map of flagged item IDs to boolean (true if still at-risk)
+ */
+export function scoreMChat(testConfig, responses, followUpResponses = null) {
+  let totalScore = 0;
+  const flaggedItems = [];
+  const itemScores = [];
+
+  testConfig.items.forEach((item) => {
+    const val = (responses[item.id] || '').toLowerCase().trim();
+    const isAtRisk = val === item.atRiskAnswer;
+    const point = isAtRisk ? 1 : 0;
+
+    totalScore += point;
+    if (isAtRisk) {
+      flaggedItems.push(item);
+    }
+
+    itemScores.push({
+      id: item.id,
+      number: item.number,
+      response: val,
+      isAtRisk,
+      point,
+    });
+  });
+
+  // Evaluate risk level
+  let riskLevel = 'low';
+  let isPositive = false;
+  let requiresFollowUp = false;
+  let interpretation = testConfig.interpretations.lowRisk;
+
+  if (totalScore >= testConfig.thresholds.highRiskMin) {
+    riskLevel = 'high';
+    isPositive = true;
+    requiresFollowUp = false;
+    interpretation = testConfig.interpretations.highRisk;
+  } else if (totalScore > testConfig.thresholds.lowRiskMax) {
+    // 3 to 7: Medium risk
+    riskLevel = 'medium';
+    requiresFollowUp = true;
+    interpretation = testConfig.interpretations.mediumRisk;
+
+    // If Follow-Up interview responses were completed:
+    if (followUpResponses && typeof followUpResponses === 'object') {
+      let confirmedCount = 0;
+      flaggedItems.forEach((item) => {
+        if (followUpResponses[item.id] === true) {
+          confirmedCount += 1;
+        }
+      });
+
+      // M-CHAT-R/F rule: If score remains 2 or higher after Follow-Up, the screen is POSITIVE.
+      if (confirmedCount >= 2) {
+        isPositive = true;
+        interpretation = {
+          headline: 'Follow-Up Confirms Risk: Developmental Evaluation Recommended',
+          summary: `Following clarification on the ${flaggedItems.length} initial flagged items, ${confirmedCount} behaviors continue to indicate developmental communication differences.`,
+          recommendation: 'Schedule a comprehensive developmental evaluation with your pediatrician or early childhood intervention specialist.',
+        };
+      } else {
+        isPositive = false;
+        interpretation = {
+          headline: 'Follow-Up Screen Negative: Low Current Risk',
+          summary: `Following clarification on the initial flagged items, only ${confirmedCount} behavior(s) remained elevated (fewer than the cutoff of 2).`,
+          recommendation: 'Continue routine well-child developmental surveillance with your pediatrician.',
+        };
+      }
+    }
+  }
+
+  return {
+    testId: testConfig.id,
+    name: testConfig.name,
+    condition: testConfig.condition,
+    totalScore,
+    maxScore: 20,
+    riskLevel,
+    isPositive,
+    requiresFollowUp,
+    flaggedItemIds: flaggedItems.map((i) => i.id),
+    flaggedItemNumbers: flaggedItems.map((i) => i.number),
+    headline: interpretation.headline,
+    summary: interpretation.summary,
+    recommendation: interpretation.recommendation,
+    itemScores,
+  };
+}
+
+/**
  * Universal dispatcher
  */
-export function scoreTest(testConfig, responses) {
+export function scoreTest(testConfig, responses, followUpResponses = null) {
   if (testConfig.scoringStrategy === 'asrs_dual') {
     return scoreASRS6(testConfig, responses);
   }
@@ -203,6 +290,9 @@ export function scoreTest(testConfig, responses) {
   }
   if (testConfig.scoringStrategy === 'catq_likert') {
     return scoreCATQ(testConfig, responses);
+  }
+  if (testConfig.scoringStrategy === 'mchat_scoring') {
+    return scoreMChat(testConfig, responses, followUpResponses);
   }
   throw new Error(`Unsupported scoring strategy: ${testConfig.scoringStrategy}`);
 }

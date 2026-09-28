@@ -21,49 +21,12 @@ export default function Header({
           </div>
         </div>
 
-        {/* Module Switcher Tabs */}
-        <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.04)', padding: '4px', borderRadius: 'var(--radius-full)', border: '1px solid var(--border-subtle)' }}>
-          <button
-            onClick={() => onSelectModule('cognitive')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 16px',
-              borderRadius: 'var(--radius-full)',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              background: activeModule === 'cognitive' ? 'var(--cyan-primary)' : 'transparent',
-              color: activeModule === 'cognitive' ? '#ffffff' : 'var(--text-muted)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <Brain size={14} />
-            <span>Cognitive Suite</span>
-          </button>
-
-          <button
-            onClick={() => onSelectModule('screening')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 16px',
-              borderRadius: 'var(--radius-full)',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              background: activeModule === 'screening' ? 'var(--violet-primary)' : 'transparent',
-              color: activeModule === 'screening' ? '#ffffff' : 'var(--text-muted)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <ClipboardList size={14} />
-            <span>AuDHD Screener</span>
-          </button>
+        {/* Unified Protocol Badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '6px 14px', borderRadius: 'var(--radius-full)', border: '1px solid var(--border-subtle)' }}>
+          <Brain size={14} color="var(--cyan-glow)" />
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+            Unified Protocol: Cognitive Reflexes &bull; Memory &bull; Speech &bull; AuDHD Traits
+          </span>
         </div>
 
         {/* Telemetry Chips */}
@@ -73,21 +36,17 @@ export default function Header({
             <span>Privacy Guard</span>
           </div>
 
-          {activeModule === 'cognitive' && (
-            <>
-              <div className={`telemetry-chip ${gazeActive ? 'active' : ''}`}>
-                <Eye size={14} color={gazeActive ? '#10b981' : '#94a3b8'} />
-                <span>Oculomotor: {gazeActive ? 'Live' : 'Standby'}</span>
-              </div>
+          <div className={`telemetry-chip ${gazeActive ? 'active' : ''}`}>
+            <Eye size={14} color={gazeActive ? '#10b981' : '#94a3b8'} />
+            <span>Oculomotor: {gazeActive ? 'Live' : 'Standby'}</span>
+          </div>
 
-              <div className={`telemetry-chip ${micActive ? 'active' : ''}`}>
-                <Mic size={14} color={micActive ? '#10b981' : '#94a3b8'} />
-                <span>Phonation: {micActive ? 'Live' : 'Standby'}</span>
-              </div>
-            </>
-          )}
+          <div className={`telemetry-chip ${micActive ? 'active' : ''}`}>
+            <Mic size={14} color={micActive ? '#10b981' : '#94a3b8'} />
+            <span>Phonation: {micActive ? 'Live' : 'Standby'}</span>
+          </div>
 
-          {activeModule === 'cognitive' && currentStep !== 'preflight' && (
+          {currentStep !== 'preflight' && (
             <button
               onClick={onReset}
               className="btn-secondary"

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import Header from './components/Header';
 import PreflightScreen from './components/PreflightScreen';
 import TaskPVT from './components/TaskPVT';
@@ -7,27 +7,41 @@ import TaskDigitSpan from './components/TaskDigitSpan';
 import TaskVerbal from './components/TaskVerbal';
 import Dashboard from './components/Dashboard';
 
-import ScreeningHome from './features/screening/components/ScreeningHome';
+import AgeRouterModal from './features/screening/components/AgeRouterModal';
+import QuestionRenderer from './features/screening/components/QuestionRenderer';
+import MChatFollowUp from './features/screening/components/MChatFollowUp';
+
+import { SCREENER_REGISTRY, SCREENING_FLOWS } from './features/screening/tests/index';
+import { scoreTest, scoreMChat } from './features/screening/engine/scorer';
 
 import { useGazeTracker } from './hooks/useGazeTracker';
 import { useAcousticAnalyzer } from './hooks/useAcousticAnalyzer';
 import { useMotorLogger } from './hooks/useMotorLogger';
 
-import { Activity, Loader2, Sparkles } from 'lucide-react';
+import { Activity, Brain, ArrowRight, ShieldCheck, HeartHandshake } from 'lucide-react';
 
 export default function App() {
-  const [activeModule, setActiveModule] = useState('cognitive'); // 'cognitive' or 'screening'
-  const [currentStep, setCurrentStep] = useState('preflight'); // preflight, task_pvt, task_stroop, task_digit_span, task_verbal, analyzing, dashboard
+  // Steps: 'preflight', 'task_pvt', 'task_stroop', 'task_digit_span', 'task_verbal', 'age_router', 'questionnaire', 'mchat_followup', 'analyzing', 'dashboard'
+  const [currentStep, setCurrentStep] = useState('preflight');
   const [participantId, setParticipantId] = useState('anon_user');
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analyzingStatusText, setAnalyzingStatusText] = useState('');
+
+  // Questionnaire Flow State
+  const [selectedFlow, setSelectedFlow] = useState(null);
+  const [participantInfo, setParticipantInfo] = useState(null);
+  const [currentTestIndex, setCurrentTestIndex] = useState(0);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [currentResponses, setCurrentResponses] = useState({});
+  const [completedScreeningResults, setCompletedScreeningResults] = useState([]);
+  const [mchatInitialResult, setMchatInitialResult] = useState(null);
 
   // Multimodal Sensors & Telemetry Hooks
   const gazeTracker = useGazeTracker();
   const acousticAnalyzer = useAcousticAnalyzer();
   const motorLogger = useMotorLogger();
 
-  // Session Storage Ref for compiled biomarkers
+  // Session Storage Ref for compiled biomarkers & results
   const sessionDataRef = useRef({
     tasks: {
       pvt: null,
@@ -40,38 +54,149 @@ export default function App() {
       acoustic: null,
       motor: null,
     },
+    screening: null,
   });
 
-  // Start protocol from pre-flight
+  // 1. Start from pre-flight
   const handleStartProtocol = (pid) => {
     setParticipantId(pid);
     motorLogger.resetMotorStats();
     setCurrentStep('task_pvt');
   };
 
-  // Complete PVT (Reaction Time)
+  // 2. Complete PVT (Reaction Time)
   const handlePvtComplete = (pvtMetrics) => {
     sessionDataRef.current.tasks.pvt = pvtMetrics;
     setCurrentStep('task_stroop');
   };
 
-  // Complete Stroop
+  // 3. Complete Stroop
   const handleStroopComplete = (stroopMetrics) => {
     sessionDataRef.current.tasks.stroop = stroopMetrics;
     setCurrentStep('task_digit_span');
   };
 
-  // Complete Digit Span
+  // 4. Complete Digit Span
   const handleDigitSpanComplete = (digitMetrics) => {
     sessionDataRef.current.tasks.nback = digitMetrics;
     setCurrentStep('task_verbal');
   };
 
-  // Complete Verbal and launch analysis
-  const handleVerbalComplete = async (verbalMetrics) => {
+  // 5. Complete Verbal Fluency -> Proceed to Age Router Modal
+  const handleVerbalComplete = (verbalMetrics) => {
     sessionDataRef.current.tasks.verbal = verbalMetrics;
+    setCurrentStep('age_router');
+  };
+
+  // 6. Age Router Decision
+  const handleRouteSelected = (routeInfo) => {
+    setParticipantInfo(routeInfo);
+    const flow = SCREENING_FLOWS.find((f) => f.id === routeInfo.flowId) || SCREENING_FLOWS[2]; // Default quick_audhd
+    setSelectedFlow(flow);
+    setCurrentTestIndex(0);
+    setCurrentQuestionIndex(0);
+    setCurrentResponses({});
+    setCompletedScreeningResults([]);
+
+    // Check if this flow is a stub without items (e.g. AQ-Child guidance)
+    const firstTest = SCREENER_REGISTRY[flow.testIds[0]];
+    if (firstTest?.isStub) {
+      // AQ-Child guidance outcome
+      const stubResult = {
+        testId: firstTest.id,
+        name: firstTest.name,
+        condition: firstTest.condition,
+        isPositive: false,
+        headline: 'Pediatric Developmental Guidance (Ages 4–15)',
+        summary: firstTest.guidanceMessage,
+        recommendation: 'Request a formal developmental consultation with your school psychologist or developmental pediatrician for structured observation.',
+      };
+      const screeningPayload = {
+        participant: routeInfo,
+        results: [stubResult],
+      };
+      runFinalAnalysis(screeningPayload);
+    } else {
+      setCurrentStep('questionnaire');
+    }
+  };
+
+  // 6b. User decides to skip behavioral screening (Cognitive Only)
+  const handleSkipScreening = () => {
+    runFinalAnalysis(null);
+  };
+
+  // 7. Questionnaire Navigation
+  const activeTestId = selectedFlow?.testIds?.[currentTestIndex];
+  const activeTestConfig = SCREENER_REGISTRY[activeTestId];
+  const activeItem = activeTestConfig?.items?.[currentQuestionIndex];
+
+  const handleSelectOption = (value) => {
+    if (!activeItem) return;
+    setCurrentResponses((prev) => ({
+      ...prev,
+      [activeItem.id]: value,
+    }));
+  };
+
+  const handleNextQuestion = () => {
+    if (!activeTestConfig) return;
+
+    if (currentQuestionIndex + 1 < activeTestConfig.items.length) {
+      setCurrentQuestionIndex((prev) => prev + 1);
+    } else {
+      // Finished all items in this test
+      const result = scoreTest(activeTestConfig, currentResponses);
+
+      // Check if M-CHAT-R/F requires Follow-Up (Medium Risk 3–7)
+      if (activeTestConfig.id === 'mchat' && result.requiresFollowUp) {
+        setMchatInitialResult(result);
+        setCurrentStep('mchat_followup');
+        return;
+      }
+
+      const nextResults = [...completedScreeningResults, result];
+      setCompletedScreeningResults(nextResults);
+
+      if (currentTestIndex + 1 < selectedFlow.testIds.length) {
+        // Move to next questionnaire in flow (e.g. ASRS-6 -> AQ-10)
+        setCurrentTestIndex((prev) => prev + 1);
+        setCurrentQuestionIndex(0);
+        setCurrentResponses({});
+      } else {
+        // All questionnaires complete!
+        const screeningPayload = {
+          participant: participantInfo,
+          results: nextResults,
+        };
+        runFinalAnalysis(screeningPayload);
+      }
+    }
+  };
+
+  const handlePrevQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex((prev) => prev - 1);
+    }
+  };
+
+  // 7b. Complete M-CHAT Follow-Up Clarification
+  const handleCompleteMChatFollowUp = (followUpAnswers) => {
+    const finalResult = scoreMChat(activeTestConfig, currentResponses, followUpAnswers);
+    const nextResults = [...completedScreeningResults, finalResult];
+    setCompletedScreeningResults(nextResults);
+
+    const screeningPayload = {
+      participant: participantInfo,
+      results: nextResults,
+    };
+    runFinalAnalysis(screeningPayload);
+  };
+
+  // 8. Run Final Multimodal Analysis
+  const runFinalAnalysis = async (screeningData) => {
     setCurrentStep('analyzing');
-    setAnalyzingStatusText('Aggregating multimodal sensor telemetry...');
+    setAnalyzingStatusText('Aggregating on-device sensor telemetry...');
 
     // Harvest summary biomarkers
     const oculoSummary = gazeTracker.getSummary();
@@ -83,6 +208,7 @@ export default function App() {
       acoustic: acoustSummary,
       motor: motorSummary,
     };
+    sessionDataRef.current.screening = screeningData;
 
     const payload = {
       session_id: `sess_${Date.now().toString(36)}`,
@@ -122,7 +248,15 @@ export default function App() {
     sessionDataRef.current = {
       tasks: { pvt: null, stroop: null, nback: null, verbal: null },
       biomarkers: { oculomotor: null, acoustic: null, motor: null },
+      screening: null,
     };
+    setSelectedFlow(null);
+    setParticipantInfo(null);
+    setCurrentTestIndex(0);
+    setCurrentQuestionIndex(0);
+    setCurrentResponses({});
+    setCompletedScreeningResults([]);
+    setMchatInitialResult(null);
     setAnalysisResult(null);
     setCurrentStep('preflight');
   };
@@ -130,8 +264,6 @@ export default function App() {
   return (
     <div className="app-container">
       <Header
-        activeModule={activeModule}
-        onSelectModule={setActiveModule}
         currentStep={currentStep}
         gazeActive={gazeTracker.isTracking}
         micActive={acousticAnalyzer.isRecording}
@@ -139,61 +271,89 @@ export default function App() {
       />
 
       <main className="main-content">
-        {/* MODULE 1: Cognitive Screening Protocol */}
-        {activeModule === 'cognitive' && (
-          <>
-            {/* Step 1: Pre-flight Diagnostic */}
-            {currentStep === 'preflight' && (
-              <PreflightScreen
-                onStartProtocol={handleStartProtocol}
-                gazeTracker={gazeTracker}
-                acousticAnalyzer={acousticAnalyzer}
-              />
-            )}
-
-            {/* Step 2: Task 1 - PVT (HumanBenchmark Reaction Time) */}
-            {currentStep === 'task_pvt' && <TaskPVT onComplete={handlePvtComplete} />}
-
-            {/* Step 3: Task 2 - Dual-Rule Stroop */}
-            {currentStep === 'task_stroop' && <TaskStroop onComplete={handleStroopComplete} />}
-
-            {/* Step 4: Task 3 - Digit Span Memory Test */}
-            {currentStep === 'task_digit_span' && (
-              <TaskDigitSpan onComplete={handleDigitSpanComplete} />
-            )}
-
-            {/* Step 5: Task 4 - Verbal Fluency with Transcription Review */}
-            {currentStep === 'task_verbal' && (
-              <TaskVerbal acousticAnalyzer={acousticAnalyzer} onComplete={handleVerbalComplete} />
-            )}
-
-            {/* Step 6: Analyzing Transition Screen */}
-            {currentStep === 'analyzing' && (
-              <div className="glass-panel" style={{ padding: '80px 32px', textAlign: 'center', maxWidth: '600px', margin: '40px auto' }}>
-                <div style={{ position: 'relative', width: '80px', height: '80px', margin: '0 auto 24px auto' }}>
-                  <div style={{ width: '100%', height: '100%', borderRadius: '50%', border: '3px solid rgba(6,182,212,0.2)', borderTopColor: 'var(--cyan-glow)', animation: 'spin 1.2s infinite linear' }} />
-                  <Activity size={32} color="var(--cyan-glow)" style={{ position: 'absolute', top: '24px', left: '24px' }} />
-                </div>
-                <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px' }}>
-                  Synthesizing Cognitive Profile
-                </h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{analyzingStatusText}</p>
-              </div>
-            )}
-
-            {/* Step 7: Dashboard Profile */}
-            {currentStep === 'dashboard' && (
-              <Dashboard
-                analysisResult={analysisResult}
-                rawPayload={sessionDataRef.current}
-                onRetake={handleReset}
-              />
-            )}
-          </>
+        {/* Step 1: Pre-flight Diagnostic */}
+        {currentStep === 'preflight' && (
+          <PreflightScreen
+            onStartProtocol={handleStartProtocol}
+            gazeTracker={gazeTracker}
+            acousticAnalyzer={acousticAnalyzer}
+          />
         )}
 
-        {/* MODULE 2: Adult AuDHD Self-Screening Questionnaires */}
-        {activeModule === 'screening' && <ScreeningHome />}
+        {/* Step 2: Task 1 - PVT (HumanBenchmark Reaction Time) */}
+        {currentStep === 'task_pvt' && <TaskPVT onComplete={handlePvtComplete} />}
+
+        {/* Step 3: Task 2 - Dual-Rule Stroop */}
+        {currentStep === 'task_stroop' && <TaskStroop onComplete={handleStroopComplete} />}
+
+        {/* Step 4: Task 3 - Digit Span Working Memory */}
+        {currentStep === 'task_digit_span' && (
+          <TaskDigitSpan onComplete={handleDigitSpanComplete} />
+        )}
+
+        {/* Step 5: Task 4 - Verbal Fluency with Transcription Review */}
+        {currentStep === 'task_verbal' && (
+          <TaskVerbal acousticAnalyzer={acousticAnalyzer} onComplete={handleVerbalComplete} />
+        )}
+
+        {/* Step 6: Age & Participant Adaptive Router Modal */}
+        {currentStep === 'age_router' && (
+          <AgeRouterModal
+            onRouteSelected={handleRouteSelected}
+            onSkip={handleSkipScreening}
+          />
+        )}
+
+        {/* Step 7: Behavioral Questionnaire Flow (Adult ASRS/AQ-10 or Pediatric M-CHAT-R/F) */}
+        {currentStep === 'questionnaire' && activeTestConfig && activeItem && (
+          <QuestionRenderer
+            testConfig={activeTestConfig}
+            currentIndex={currentQuestionIndex}
+            totalItems={activeTestConfig.items.length}
+            item={activeItem}
+            currentValue={currentResponses[activeItem.id]}
+            onSelectOption={handleSelectOption}
+            onPrev={handlePrevQuestion}
+            onNext={handleNextQuestion}
+            isLastQuestion={
+              currentQuestionIndex + 1 === activeTestConfig.items.length &&
+              currentTestIndex + 1 === selectedFlow.testIds.length
+            }
+            onCancel={handleSkipScreening}
+          />
+        )}
+
+        {/* Step 7b: M-CHAT-R/F Medium-Risk Follow-Up Interview */}
+        {currentStep === 'mchat_followup' && mchatInitialResult && activeTestConfig && (
+          <MChatFollowUp
+            initialResult={mchatInitialResult}
+            testConfig={activeTestConfig}
+            onCompleteFollowUp={handleCompleteMChatFollowUp}
+          />
+        )}
+
+        {/* Step 8: Analyzing Transition Screen */}
+        {currentStep === 'analyzing' && (
+          <div className="glass-panel" style={{ padding: '80px 32px', textAlign: 'center', maxWidth: '600px', margin: '40px auto' }}>
+            <div style={{ position: 'relative', width: '80px', height: '80px', margin: '0 auto 24px auto' }}>
+              <div style={{ width: '100%', height: '100%', borderRadius: '50%', border: '3px solid rgba(6,182,212,0.2)', borderTopColor: 'var(--cyan-glow)', animation: 'spin 1.2s infinite linear' }} />
+              <Activity size={32} color="var(--cyan-glow)" style={{ position: 'absolute', top: '24px', left: '24px' }} />
+            </div>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px' }}>
+              Synthesizing Multi-Modal Diagnostics
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{analyzingStatusText}</p>
+          </div>
+        )}
+
+        {/* Step 9: Integrated Final Dashboard Profile */}
+        {currentStep === 'dashboard' && (
+          <Dashboard
+            analysisResult={analysisResult}
+            rawPayload={sessionDataRef.current}
+            onRetake={handleReset}
+          />
+        )}
       </main>
 
       <style>{`
@@ -210,10 +370,10 @@ export default function App() {
  * Local deterministic fallback generator matching FastAPI CPI formulation
  */
 function generateLocalAnalysisFallback(req) {
-  const pvt = req.tasks.pvt || { mean_rt: 245, inv_rt: 4.08, lapses: 0 };
+  const pvt = req.tasks.pvt || { mean_rt: 242, inv_rt: 4.13, lapses: 0 };
   const stroop = req.tasks.stroop || { interference_cost: 110, accuracy: 0.95 };
   const nback = req.tasks.nback || { dprime: 2.3, span: 7, accuracy: 0.9 };
-  const oculo = req.biomarkers.oculomotor || { gaze_on_screen: 0.93, blink_rate: 18.2, fixation_dispersion: 41.5, head_yaw_var: 3.2 };
+  const oculo = req.biomarkers.oculomotor || { gaze_on_screen: 0.94, blink_rate: 18.2, fixation_dispersion: 41.5, head_yaw_var: 3.2 };
 
   // Normative Z-scores
   const zPvt = (3.45 - 1000 / pvt.mean_rt) / 0.55 * -1;
@@ -286,10 +446,12 @@ function generateLocalAnalysisFallback(req) {
       ],
       fatigue_indicators: [
         'Moderate latency overhead during incongruent Stroop color inhibition trials.',
+        'Mild visual fatigue indicated by spontaneous blink variations.',
       ],
       recommendations: [
         'Apply 20-20-20 visual rest intervals to prevent late-day oculomotor fatigue.',
         'Engage in dual-task exercises to further minimize sensory interference latency.',
+        'Utilize external reminders and task segmentation for high executive-load tasks.',
       ],
       disclaimer:
         'NeuroNova Cognitive Screening is an automated psychometric assessment intended for functional cognitive awareness and research tracking. It does NOT constitute a clinical medical diagnosis.',

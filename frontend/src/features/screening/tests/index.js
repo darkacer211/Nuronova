@@ -1,56 +1,63 @@
-import { asrs6 } from './asrs6';
-import { aq10 } from './aq10';
-import { catq } from './catq';
-import { raadsRStub, aq50Stub, rbq2aStub } from './stubs';
+import { asrs6 } from './asrs6.js';
+import { aq10 } from './aq10.js';
+import { catq } from './catq.js';
+import { mchat } from './mchat.js';
+import { aqChild } from './aqChild.js';
+import { raadsRStub, aq50Stub, rbq2aStub } from './stubs.js';
 
 export const SCREENER_REGISTRY = {
   asrs6,
   aq10,
   catq,
+  mchat,
+  aq_child: aqChild,
   raads_r: raadsRStub,
   aq50: aq50Stub,
   rbq2a: rbq2aStub,
 };
 
 export const SCREENING_FLOWS = [
+  // Pediatric Flows (Parent / Caregiver Assisted)
+  {
+    id: 'pediatric_mchat',
+    targetAgeGroup: 'toddler',
+    title: 'Toddler Autism Screen (M-CHAT-R/F)',
+    badge: '16–30 Months',
+    duration: '~5 mins',
+    respondent: 'Parent / Caregiver Assisted',
+    description: 'The standard 20-item parent screener for autism risk in toddlers aged 16 to 30 months (Robins et al.).',
+    testIds: ['mchat'],
+  },
+  {
+    id: 'pediatric_child',
+    targetAgeGroup: 'child',
+    title: 'Child & Adolescent Autism Screen (AQ-Child)',
+    badge: 'Ages 4–15',
+    duration: '~5 mins',
+    respondent: 'Parent / Caregiver Assisted',
+    description: 'Parent-report screening framework for school-age children (Auyeung & Baron-Cohen).',
+    testIds: ['aq_child'],
+  },
+
+  // Adult Flows (18+ Self-Report)
   {
     id: 'quick_audhd',
-    title: 'Quick AuDHD Screen',
-    badge: 'Recommended',
+    targetAgeGroup: 'adult',
+    title: 'Adult Quick AuDHD Screen',
+    badge: 'Recommended (18+)',
     duration: '~5 mins',
-    description: 'The standard adult dual-screen pairing: ASRS-6 for ADHD traits plus AQ-10 for core autistic traits.',
+    respondent: 'Self-Report',
+    description: 'The dual-screening pairing: ASRS-6 for ADHD traits plus AQ-10 for core autistic traits.',
     testIds: ['asrs6', 'aq10'],
   },
   {
     id: 'extended_audhd',
-    title: 'Extended AuDHD Screen (+ Camouflaging)',
-    badge: 'Comprehensive',
+    targetAgeGroup: 'adult',
+    title: 'Adult Extended AuDHD Screen (+ Camouflaging)',
+    badge: 'Comprehensive (18+)',
     duration: '~10-12 mins',
-    description: 'Includes ASRS-6, AQ-10, and the 25-item CAT-Q to detect high masking, social compensation, and assimilation.',
+    respondent: 'Self-Report',
+    description: 'Includes ASRS-6, AQ-10, and the 25-item CAT-Q to detect high masking and social compensation.',
     testIds: ['asrs6', 'aq10', 'catq'],
-  },
-  {
-    id: 'adhd_single',
-    title: 'ADHD Screener Only (ASRS v1.1)',
-    badge: 'Focused',
-    duration: '~2-3 mins',
-    description: 'The World Health Organization 6-question adult ADHD screener (Kessler et al.).',
-    testIds: ['asrs6'],
-  },
-  {
-    id: 'autism_single',
-    title: 'Autism Screener Only (AQ-10)',
-    badge: 'Focused',
-    duration: '~3-4 mins',
-    description: 'The 10-item Autism Spectrum Quotient adult screener recommended by NICE guidelines.',
-    testIds: ['aq10'],
-  },
-  {
-    id: 'catq_single',
-    title: 'Camouflaging / Masking Only (CAT-Q)',
-    badge: 'Deep Dive',
-    duration: '~5-6 mins',
-    description: 'Evaluates conscious and subconscious compensation and social masking strategies (Hull et al.).',
-    testIds: ['catq'],
   },
 ];
