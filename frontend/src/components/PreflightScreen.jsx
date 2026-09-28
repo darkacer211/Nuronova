@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Mic, ShieldAlert, CheckCircle2, AlertCircle, ArrowRight, Activity, Brain, Baby, User, Sparkles } from 'lucide-react';
+import { Camera, Mic, ArrowRight, Baby, User } from 'lucide-react';
 
 export default function PreflightScreen({
   onStartProtocol,
@@ -49,16 +49,9 @@ export default function PreflightScreen({
       
       {/* Hero Welcome Card */}
       <div className="glass-panel" style={{ padding: '36px 32px', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-          <span className="badge-pill badge-cyan">NeuroNova Diagnostics</span>
-          <span className="badge-pill badge-violet">Clinical-Grade Architecture</span>
-        </div>
-        <h2 style={{ fontSize: '2.1rem', fontWeight: 800, marginBottom: '10px', letterSpacing: '-0.02em', color: '#ffffff' }}>
+        <h2 style={{ fontSize: '2.1rem', fontWeight: 800, marginBottom: '24px', letterSpacing: '-0.02em', color: '#ffffff' }}>
           Select Your Screening Pathway
         </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '1rem', maxWidth: '720px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
-          Choose the appropriate assessment track based on participant age and developmental requirements.
-        </p>
 
         {/* TWO PATHWAYS SELECTION CARDS */}
         <div className="grid-2" style={{ gap: '20px', textAlign: 'left' }}>
@@ -92,16 +85,11 @@ export default function PreflightScreen({
                   <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff' }}>
                     Adults & Youth (Ages 16+)
                   </h3>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Computer-Based Tasks + Self-Report</div>
                 </div>
               </div>
               <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Full multi-modal protocol: Visual reaction time, dual-rule Stroop inhibition, digit span working memory, speech fluency, and adult AuDHD questionnaires (ASRS-6 & AQ-10).
+                Reaction time, attention, memory, and speech tasks, plus ASRS-6 and AQ-10 questionnaires.
               </p>
-            </div>
-
-            <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--cyan-glow)', fontWeight: 600 }}>
-              <span>Includes Edge Vision & Phonation Telemetry</span>
             </div>
           </div>
 
@@ -132,18 +120,13 @@ export default function PreflightScreen({
                 </div>
                 <div>
                   <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff' }}>
-                    Toddlers (16–30 Months) & Children
+                    Toddlers (16–30 months) & Children
                   </h3>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Bypasses Laptop Reflex Tasks</div>
                 </div>
               </div>
               <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Directly launches the 20-item <strong>M-CHAT-R/F</strong> parent questionnaire with automatic follow-up clarification for early communication & social milestones. <em>No laptop testing required for the child.</em>
+                A 20-question parent questionnaire (M-CHAT-R/F) about communication and social milestones.
               </p>
-            </div>
-
-            <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--violet-glow)', fontWeight: 600 }}>
-              <span>Includes Pediatric Risk Stratification Report</span>
             </div>
           </div>
 
@@ -159,7 +142,7 @@ export default function PreflightScreen({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <Camera size={20} color="var(--cyan-glow)" />
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Webcam & Oculomotor Gaze Sensor</h3>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Eye tracking (webcam)</h3>
                 </div>
                 {cameraReady ? (
                   <span className="badge-pill badge-emerald">Connected</span>
@@ -179,7 +162,7 @@ export default function PreflightScreen({
                 {!cameraReady && (
                   <div style={{ position: 'absolute', textAlign: 'center', padding: '16px' }}>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-                      Enable webcam to track spontaneous blink rate, gaze lock, and head pose.
+                      Optional: track blink rate and gaze.
                     </p>
                     <button onClick={handleEnableCamera} className="btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px' }}>
                       Enable Camera Preview
@@ -203,7 +186,7 @@ export default function PreflightScreen({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <Mic size={20} color="var(--violet-glow)" />
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Microphone & Phonation Capture</h3>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Voice recording (microphone)</h3>
                 </div>
                 {micReady ? (
                   <span className="badge-pill badge-emerald">Calibrated</span>
@@ -216,7 +199,7 @@ export default function PreflightScreen({
                 {!micReady ? (
                   <div style={{ textAlign: 'center' }}>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
-                      Enable microphone to analyze verbal fluency and phonation pauses.
+                      Optional: analyze speech fluency and pauses.
                     </p>
                     <button onClick={handleEnableMic} className="btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px' }}>
                       Calibrate Microphone
@@ -306,19 +289,18 @@ export default function PreflightScreen({
                 Pediatric Autism Milestone Screener (M-CHAT-R/F)
               </h3>
               <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>
-                Target age: 16 to 30 months (and up to 48 months). Completed by parent or primary caregiver.
+                Target age: 16–30 months. Completed by parent or primary caregiver.
               </p>
             </div>
           </div>
 
           <div style={{ background: 'rgba(139, 92, 246, 0.08)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: 'var(--radius-md)', padding: '18px 20px', marginBottom: '24px', fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: 1.6 }}>
-            <strong>Why no computer reflex tasks? </strong>
-            Toddlers and young children cannot perform laptop reaction-time clicks, Stroop inhibition, or digit span memory tests. Early autism screening relies exclusively on standardized parental observation of developmental milestones (pointing, joint attention, response to name, pretend play).
+            Young children are screened through parent observation of milestones like pointing, joint attention, and response to name.
           </div>
 
           <div style={{ marginBottom: '24px' }}>
             <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
-              Child's First Name or Nickname (Optional & Private — never stored on external servers):
+              Child's name or nickname (optional)
             </label>
             <input
               type="text"
