@@ -121,10 +121,16 @@ export default function TaskPVT({ onComplete }) {
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [phase, handleResponse, startTrial]);
+
+  // Teardown timers ONLY on component unmount
+  useEffect(() => {
+    return () => {
       clearTimeout(delayTimerRef.current);
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
-  }, [phase, handleResponse, startTrial]);
+  }, []);
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto' }}>
