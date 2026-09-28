@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Layers, CheckCircle2, Zap } from 'lucide-react';
+import { Layers, CheckCircle2, Zap, ArrowRight } from 'lucide-react';
 
 const LETTERS = ['A', 'B', 'C', 'H', 'K', 'M', 'R', 'T', 'X'];
 
@@ -7,120 +7,37 @@ export default function TaskNBack({ onComplete }) {
   const [phase, setPhase] = useState('instructions'); // instructions, presenting, interstimulus, finished
   const [trialIndex, setTrialIndex] = useState(0);
   const [currentLetter, setCurrentLetter] = useState('');
-  const [nLevel, setNLevel] = useState(2); // 2-Back
-  const [feedbackFlash, setFeedbackFlash] = useState(null); // 'hit', 'fa', null
+  const [nLevel] = useState(2); // 2-Back
+  const [userFeedback, setUserFeedback] = useState(null); // 'hit', 'fa', 'miss', null
+  const [canMatch, setCanMatch] = useState(false);
 
-  const TOTAL_TRIALS = 14;
+  const TOTAL_TRIALS = 12;
   const historyRef = useRef([]);
-  const userResponsesRef = useRef([]); // { trial, pressedMatch, isActualMatch, hit, fa, miss, cr }
+  const userResponsesRef = useRef([]);
   const hasRespondedThisTrialRef = useRef(false);
-  const timerRef = useRef(null);
+  const trialTimerRef = useRef(null);
+  const isiTimerRef = useRef(null);
 
-  // Generate sequence with ~35% match probability
-  const generateNextLetter = useCallback((hist, n) => {
-    if (hist.length >= n && Math.random() < 0.38) {
-      return hist[hist.length - n]; // match target
+  // Generate letter sequence with guaranteed match targets after step N
+  const generateNextLetter = (hist, n) => {
+    // Force match on ~40% of trials after step 2
+    if (hist.length >= n && Math.random() < 0.42) {
+      return hist[hist.length - n]; // True 2-back match
     }
-    // Random non-match (or random letter)
+    // Random letter from alphabet
     return LETTERS[Math.floor(Math.random() * LETTERS.length)];
-  }, []);
+  };
 
-  const runTrial = useCallback(
-    (index) => {
-      hasRespondedThisTrialRef.current = false;
-      setFeedbackFlash(null);
-
-      const letter = generateNextLetter(historyRef.current, nLevel);
-      historyRef.current.push(letter);
-      setCurrentLetter(letter);
-      setPhase('presenting');
-
-      // Stimulus presentation duration: 900ms
-      timerRef.current = setTimeout(() => {
-        // Inter-stimulus blank interval: 1100ms
-        setPhase('interstimulus');
-
-        timerRef.current = setTimeout(() => {
-          // Check if trial was missed
-          const isActualMatch =
-            historyRef.current.length > nLevel &&
-            historyRef.current[historyRef.current.length - 1] ===
-              historyRef.current[historyRef.current.length - 1 - nLevel];
-
-          if (isActualMatch && !hasRespondedThisTrialRef.current) {
-            userResponsesRef.current.push({
-              trial: index,
-              pressedMatch: false,
-              isActualMatch: true,
-              result: 'miss',
-            });
-          } else if (!isActualMatch && !hasRespondedThisTrialRef.current) {
-            userResponsesRef.current.push({
-              trial: index,
-              pressedMatch: false,
-              isActualMatch: false,
-              result: 'cr', // Correct Rejection
-            });
-          }
-
-          if (index + 1 < TOTAL_TRIALS) {
-            setTrialIndex((prev) => prev + 1);
-            runTrial(index + 1);
-          } else {
-            finishTask();
-          }
-        }, 1100);
-      }, 900);
-    },
-    [generateNextLetter, nLevel]
-  );
-
-  const handleMatchPress = useCallback(() => {
-    if (hasRespondedThisTrialRef.current || historyRef.current.length <= nLevel) return;
-    hasRespondedThisTrialRef.current = true;
-
-    const hist = historyRef.current;
-    const isActualMatch = hist[hist.length - 1] === hist[hist.length - 1 - nLevel];
-
-    if (isActualMatch) {
-      userResponsesRef.current.push({
-        trial: trialIndex,
-        pressedMatch: true,
-        isActualMatch: true,
-        result: 'hit',
-      });
-      setFeedbackFlash('hit');
-    } else {
-      userResponsesRef.current.push({
-        trial: trialIndex,
-        pressedMatch: true,
-        isActualMatch: false,
-        result: 'fa', // False Alarm
-      });
-      setFeedbackFlash('fa');
-    }
-  }, [trialIndex, nLevel]);
-
-  // Compute Signal Detection Theory d-prime (d') sensitivity
-  const finishTask = useCallback(() => {
-    setPhase('finished');
-    const responses = userResponsesRef.current;
-
-    const hits = responses.filter((r) => r.result === 'hit').length;
-    const misses = responses.filter((r) => r.result === 'miss').length;
-    const fas = responses.filter((r) => r.result === 'fa').length;
-    const crs = responses.filter((r) => r.result === 'cr').length;
-
+  // Signal Detection Theory d-prime (d') calculation
+  const calculateDPrime = (hits, misses, fas, crs) => {
     const targets = Math.max(hits + misses, 1);
     const nonTargets = Math.max(fas + crs, 1);
 
-    // Standard log-linear correction for d' extremes
+    // Log-linear adjustment for small sample sizes
     const hitRate = (hits + 0.5) / (targets + 1);
     const faRate = (fas + 0.5) / (nonTargets + 1);
 
-    // Rational approximation for inverse normal CDF (probit)
     const probit = (p) => {
-      // Simple rational Chebyshev approximation
       const a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1, 2.506628277459239];
       const b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
       const q = p - 0.5;
@@ -135,29 +52,112 @@ export default function TaskNBack({ onComplete }) {
       return p < 0.5 ? z : -z;
     };
 
-    const dprime = Math.min(Math.max(probit(hitRate) - probit(faRate), 0.2), 3.8);
-    const totalResponses = hits + misses + fas + crs;
-    const accuracy = totalResponses > 0 ? (hits + crs) / totalResponses : 0.82;
+    return Math.min(Math.max(probit(hitRate) - probit(faRate), 0.2), 3.8);
+  };
 
-    onComplete({
-      level: nLevel,
-      accuracy: Number(accuracy.toFixed(2)),
-      dprime: Number(dprime.toFixed(2)),
-      hits,
-      misses,
-      false_alarms: fas,
-      correct_rejections: crs,
-    });
+  const finishTask = useCallback(() => {
+    setPhase('finished');
+    const responses = userResponsesRef.current;
+
+    const hits = responses.filter((r) => r.result === 'hit').length;
+    const misses = responses.filter((r) => r.result === 'miss').length;
+    const fas = responses.filter((r) => r.result === 'fa').length;
+    const crs = responses.filter((r) => r.result === 'cr').length;
+
+    const dprime = calculateDPrime(hits, misses, fas, crs);
+    const total = Math.max(hits + misses + fas + crs, 1);
+    const accuracy = (hits + crs) / total;
+
+    setTimeout(() => {
+      onComplete({
+        level: nLevel,
+        accuracy: Number(accuracy.toFixed(2)),
+        dprime: Number(dprime.toFixed(2)),
+        hits,
+        misses,
+        false_alarms: fas,
+        correct_rejections: crs,
+      });
+    }, 1200);
   }, [nLevel, onComplete]);
 
-  // Keyboard handler for 'M' key or Spacebar
+  // Main trial runner function
+  const runTrial = useCallback((index) => {
+    // Clear any existing trial timers
+    if (trialTimerRef.current) clearTimeout(trialTimerRef.current);
+    if (isiTimerRef.current) clearTimeout(isiTimerRef.current);
+
+    hasRespondedThisTrialRef.current = false;
+    setUserFeedback(null);
+    setTrialIndex(index);
+
+    const letter = generateNextLetter(historyRef.current, nLevel);
+    historyRef.current.push(letter);
+    setCurrentLetter(letter);
+
+    const isMatchCapable = historyRef.current.length > nLevel;
+    setCanMatch(isMatchCapable);
+    setPhase('presenting');
+
+    // 1. Presentation window: 1000ms
+    trialTimerRef.current = setTimeout(() => {
+      setPhase('interstimulus');
+
+      // 2. Inter-stimulus interval (blank): 1200ms
+      isiTimerRef.current = setTimeout(() => {
+        // Evaluate response if not user-triggered
+        const hist = historyRef.current;
+        const wasActualMatch = isMatchCapable && hist[index] === hist[index - nLevel];
+
+        if (!hasRespondedThisTrialRef.current) {
+          if (wasActualMatch) {
+            userResponsesRef.current.push({ trial: index, result: 'miss' });
+          } else {
+            userResponsesRef.current.push({ trial: index, result: 'cr' });
+          }
+        }
+
+        // Advance to next trial or finish
+        if (index + 1 < TOTAL_TRIALS) {
+          runTrial(index + 1);
+        } else {
+          finishTask();
+        }
+      }, 1200);
+    }, 1000);
+  }, [nLevel, finishTask]);
+
+  const handleMatchPress = useCallback(() => {
+    if (hasRespondedThisTrialRef.current || phase === 'instructions' || phase === 'finished') return;
+    hasRespondedThisTrialRef.current = true;
+
+    const hist = historyRef.current;
+    const isActualMatch = hist.length > nLevel && hist[hist.length - 1] === hist[hist.length - 1 - nLevel];
+
+    if (isActualMatch) {
+      userResponsesRef.current.push({ trial: trialIndex, result: 'hit' });
+      setUserFeedback('hit');
+    } else {
+      userResponsesRef.current.push({ trial: trialIndex, result: 'fa' });
+      setUserFeedback('fa');
+    }
+  }, [phase, trialIndex, nLevel]);
+
+  // Keyboard handler for Spacebar (start) and Key M (match)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (phase === 'instructions') {
-        if (e.code === 'Space') runTrial(0);
-      } else if (phase === 'presenting' || phase === 'interstimulus') {
-        if (e.code === 'KeyM' || e.code === 'Space') {
-          e.preventDefault();
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (phase === 'instructions') {
+          historyRef.current = [];
+          userResponsesRef.current = [];
+          runTrial(0);
+        } else if (phase === 'presenting' || phase === 'interstimulus') {
+          handleMatchPress();
+        }
+      } else if (e.code === 'KeyM') {
+        e.preventDefault();
+        if (phase === 'presenting' || phase === 'interstimulus') {
           handleMatchPress();
         }
       }
@@ -166,9 +166,16 @@ export default function TaskNBack({ onComplete }) {
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      clearTimeout(timerRef.current);
     };
-  }, [phase, handleMatchPress, runTrial]);
+  }, [phase, runTrial, handleMatchPress]);
+
+  // Teardown timers ONLY on component unmount
+  useEffect(() => {
+    return () => {
+      if (trialTimerRef.current) clearTimeout(trialTimerRef.current);
+      if (isiTimerRef.current) clearTimeout(isiTimerRef.current);
+    };
+  }, []);
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto' }}>
@@ -179,7 +186,7 @@ export default function TaskNBack({ onComplete }) {
           <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>2-Back Working Memory Task</span>
         </div>
         <div className="mono-num" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          Sequence {trialIndex + 1} / {TOTAL_TRIALS}
+          Letter {trialIndex + 1} of {TOTAL_TRIALS}
         </div>
       </div>
 
@@ -191,60 +198,101 @@ export default function TaskNBack({ onComplete }) {
               <Layers size={32} color="var(--emerald-glow)" />
             </div>
             <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '10px' }}>
-              Detect 2-Back Letter Matches
+              2-Back Working Memory Updating
             </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '20px' }}>
-              Letters will flash sequentially on screen. Press <strong style={{ color: '#fff' }}>KEY [M]</strong> or <strong style={{ color: '#fff' }}>SPACEBAR</strong> whenever the current letter matches the one from <strong style={{ color: 'var(--emerald-glow)' }}>2 steps ago</strong>.
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '18px' }}>
+              Letters will appear one by one. Press <strong style={{ color: '#fff' }}>KEY [M]</strong>, <strong style={{ color: '#fff' }}>SPACEBAR</strong>, or click the <strong style={{ color: 'var(--emerald-glow)' }}>MATCH</strong> button whenever the current letter matches the one shown <strong style={{ color: 'var(--emerald-glow)' }}>2 steps ago</strong>.
             </p>
-            <div style={{ background: 'rgba(255,255,255,0.04)', padding: '12px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', marginBottom: '24px', fontSize: '0.86rem', color: 'var(--text-muted)' }}>
-              Example sequence: <strong>B</strong> → X → <strong style={{ color: 'var(--emerald-glow)' }}>B (MATCH!)</strong> → M → K → ...
+            <div style={{ background: 'rgba(255,255,255,0.04)', padding: '12px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', marginBottom: '24px', fontSize: '0.88rem', color: 'var(--text-muted)' }}>
+              Example: <strong>A</strong> &rarr; X &rarr; <strong style={{ color: 'var(--emerald-glow)' }}>A (PRESS MATCH!)</strong> &rarr; K &rarr; ...
             </div>
-            <button className="btn-primary" onClick={() => runTrial(0)}>
-              Start 2-Back Protocol (Spacebar)
+            <button
+              className="btn-primary"
+              onClick={() => {
+                historyRef.current = [];
+                userResponsesRef.current = [];
+                runTrial(0);
+              }}
+            >
+              Start 2-Back Task (Spacebar)
             </button>
           </div>
         )}
 
-        {phase === 'presenting' && (
-          <div style={{ textAlign: 'center' }}>
+        {(phase === 'presenting' || phase === 'interstimulus') && (
+          <div style={{ textAlign: 'center', width: '100%', maxWidth: '400px' }}>
+            {/* Target Letter or ISI Blank */}
             <div
-              className="mono-num"
               style={{
-                fontSize: '6.5rem',
-                fontWeight: 800,
-                color: '#ffffff',
-                letterSpacing: '-0.02em',
-                textShadow: '0 0 40px rgba(16, 185, 129, 0.5)',
-                marginBottom: '28px',
+                height: '140px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '20px',
               }}
             >
-              {currentLetter}
+              {phase === 'presenting' ? (
+                <div
+                  className="mono-num"
+                  style={{
+                    fontSize: '6.8rem',
+                    fontWeight: 800,
+                    color: '#ffffff',
+                    letterSpacing: '-0.02em',
+                    textShadow: '0 0 45px rgba(16, 185, 129, 0.6)',
+                  }}
+                >
+                  {currentLetter}
+                </div>
+              ) : (
+                <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: '#334155' }} />
+              )}
             </div>
 
+            {/* Match Status / Feedback */}
+            <div style={{ height: '32px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {userFeedback === 'hit' && (
+                <span className="badge-pill badge-emerald" style={{ fontSize: '0.88rem', padding: '6px 14px' }}>
+                  ✓ Match Recorded (Correct Hit)
+                </span>
+              )}
+              {userFeedback === 'fa' && (
+                <span className="badge-pill badge-rose" style={{ fontSize: '0.88rem', padding: '6px 14px' }}>
+                  ✗ False Alarm (Did not match 2-back)
+                </span>
+              )}
+              {!userFeedback && canMatch && (
+                <span style={{ fontSize: '0.82rem', color: 'var(--emerald-glow)', opacity: 0.8 }}>
+                  ● 2-Back Matching Active
+                </span>
+              )}
+              {!userFeedback && !canMatch && (
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
+                  Loading working memory buffer (Step {trialIndex + 1}/2)...
+                </span>
+              )}
+            </div>
+
+            {/* Match Action Button */}
             <button
               onClick={handleMatchPress}
               className="btn-primary"
+              disabled={hasRespondedThisTrialRef.current}
               style={{
-                background: feedbackFlash === 'hit' ? 'var(--emerald-primary)' : 'linear-gradient(135deg, var(--emerald-primary), #059669)',
-                boxShadow: '0 4px 20px rgba(16, 185, 129, 0.4)',
-                padding: '14px 32px',
-                fontSize: '1.1rem',
+                width: '100%',
+                padding: '16px 24px',
+                fontSize: '1.15rem',
+                background: userFeedback === 'hit'
+                  ? 'var(--emerald-primary)'
+                  : userFeedback === 'fa'
+                  ? 'var(--rose-primary)'
+                  : 'linear-gradient(135deg, var(--emerald-primary), #059669)',
+                boxShadow: '0 6px 24px rgba(16, 185, 129, 0.4)',
+                opacity: hasRespondedThisTrialRef.current ? 0.6 : 1,
               }}
             >
-              <span>MATCH (Key M)</span>
-            </button>
-          </div>
-        )}
-
-        {phase === 'interstimulus' && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#334155', margin: '0 auto 28px auto' }} />
-            <button
-              onClick={handleMatchPress}
-              className="btn-secondary"
-              style={{ padding: '14px 32px', fontSize: '1.1rem' }}
-            >
-              <span>MATCH (Key M)</span>
+              <Zap size={20} />
+              <span>{hasRespondedThisTrialRef.current ? 'RESPONSE RECORDED' : '2-BACK MATCH (Key M)'}</span>
             </button>
           </div>
         )}
@@ -253,13 +301,13 @@ export default function TaskNBack({ onComplete }) {
           <div style={{ textAlign: 'center' }}>
             <CheckCircle2 size={48} color="var(--emerald-glow)" style={{ margin: '0 auto 12px auto' }} />
             <h4 style={{ fontSize: '1.25rem', fontWeight: 600 }}>N-Back Task Complete</h4>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Computing working memory sensitivity (d')...</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Quantifying signal detection sensitivity (d')...</p>
           </div>
         )}
       </div>
 
       <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-        Working memory updating index reflects real-time prefrontal cortex buffer capacity.
+        Keyboard shortcut: Press <strong>[M]</strong> or <strong>[SPACEBAR]</strong> when current letter matches the one from 2 steps ago.
       </div>
     </div>
   );
