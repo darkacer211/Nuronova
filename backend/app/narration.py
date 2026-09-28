@@ -148,36 +148,37 @@ async def generate_llm_report(
 
     # 2. Attempt Gemini Flash
     if gemini_api_key:
-        try:
-            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}"
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                res = await client.post(
-                    gemini_url,
-                    headers={"Content-Type": "application/json"},
-                    json={
-                        "contents": [{
-                            "parts": [{
-                                "text": f"{system_instruction}\n\nScreening Data: {json.dumps(prompt_data)}"
-                            }]
-                        }],
-                        "generationConfig": {
-                            "responseMimeType": "application/json",
-                            "temperature": 0.2
+        for model_name in ["gemini-flash-latest", "gemini-3.8-flash", "gemini-1.5-flash"]:
+            try:
+                gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_api_key}"
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    res = await client.post(
+                        gemini_url,
+                        headers={"Content-Type": "application/json"},
+                        json={
+                            "contents": [{
+                                "parts": [{
+                                    "text": f"{system_instruction}\n\nScreening Data: {json.dumps(prompt_data)}"
+                                }]
+                            }],
+                            "generationConfig": {
+                                "responseMimeType": "application/json",
+                                "temperature": 0.2
+                            }
                         }
-                    }
-                )
-                if res.status_code == 200:
-                    raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-                    parsed = json.loads(raw_text)
-                    return NarrativeReport(
-                        summary=parsed.get("summary", ""),
-                        key_strengths=parsed.get("key_strengths", []),
-                        fatigue_indicators=parsed.get("fatigue_indicators", []),
-                        recommendations=parsed.get("recommendations", []),
-                        disclaimer=DISCLAIMER_TEXT
                     )
-        except Exception:
-            pass
+                    if res.status_code == 200:
+                        raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        parsed = json.loads(raw_text)
+                        return NarrativeReport(
+                            summary=parsed.get("summary", ""),
+                            key_strengths=parsed.get("key_strengths", []),
+                            fatigue_indicators=parsed.get("fatigue_indicators", []),
+                            recommendations=parsed.get("recommendations", []),
+                            disclaimer=DISCLAIMER_TEXT
+                        )
+            except Exception:
+                continue
 
     # 3. Deterministic Fallback (Guaranteed 100% reliability, no external network dependence)
     return generate_deterministic_report(cpi, percentile, domains, shap_factors)
