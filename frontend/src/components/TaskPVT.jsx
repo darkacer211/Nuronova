@@ -1,235 +1,237 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Timer, AlertTriangle, Zap, CheckCircle2 } from 'lucide-react';
+import { Zap, RotateCcw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 
 export default function TaskPVT({ onComplete }) {
-  const [phase, setPhase] = useState('instructions'); // instructions, waiting, active, feedback, finished
-  const [trialIndex, setTrialIndex] = useState(0);
-  const [displayMs, setDisplayMs] = useState(0);
-  const [feedbackMsg, setFeedbackMsg] = useState('');
-  const [isLapse, setIsLapse] = useState(false);
+  // state: 'intro', 'waiting' (red), 'early' (too soon), 'active' (green), 'result' (single round), 'finished' (5 rounds done)
+  const [gameState, setGameState] = useState('intro');
+  const [currentRound, setCurrentRound] = useState(1);
+  const [roundTime, setRoundTime] = useState(0);
+  const [roundHistory, setRoundHistory] = useState([]);
 
-  const TOTAL_TRIALS = 10;
-  const trialsDataRef = useRef([]);
-  const stimulusStartRef = useRef(0);
-  const delayTimerRef = useRef(null);
-  const rafIdRef = useRef(null);
+  const TOTAL_ROUNDS = 5;
+  const timerRef = useRef(null);
+  const startTimeRef = useRef(0);
+  const roundHistoryRef = useRef([]);
 
-  // Update animated millisecond counter
-  const updateCounter = useCallback(() => {
-    if (phase === 'active' || stimulusStartRef.current > 0) {
-      const elapsed = Math.round(performance.now() - stimulusStartRef.current);
-      setDisplayMs(elapsed);
-      if (elapsed > 500 && !isLapse) {
-        setIsLapse(true);
-      }
-      rafIdRef.current = requestAnimationFrame(updateCounter);
-    }
-  }, [phase, isLapse]);
+  // Start waiting for green
+  const startWaiting = useCallback(() => {
+    setGameState('waiting');
+    setRoundTime(0);
 
-  // Start a new trial with randomized ISI (1800ms - 4000ms)
-  const startTrial = useCallback((index) => {
-    setPhase('waiting');
-    setDisplayMs(0);
-    setIsLapse(false);
-    stimulusStartRef.current = 0;
+    // HumanBenchmark random delay between 2000ms and 5000ms
+    const randomDelay = Math.floor(2000 + Math.random() * 3000);
 
-    const randomDelay = Math.floor(1800 + Math.random() * 2200);
-
-    delayTimerRef.current = setTimeout(() => {
-      stimulusStartRef.current = performance.now();
-      setPhase('active');
-      rafIdRef.current = requestAnimationFrame(updateCounter);
+    timerRef.current = setTimeout(() => {
+      startTimeRef.current = performance.now();
+      setGameState('active');
     }, randomDelay);
-  }, [updateCounter]);
+  }, []);
 
-  // Handle user response (Spacebar or Click)
-  const handleResponse = useCallback(() => {
-    if (phase === 'waiting') {
-      // False start (Premature response)
-      clearTimeout(delayTimerRef.current);
-      trialsDataRef.current.push({ rt: 0, falseStart: true, lapse: false });
-      setFeedbackMsg('FALSE START — Wait for the stimulus!');
-      setPhase('feedback');
+  // Handle click / screen press
+  const handleClick = useCallback(() => {
+    if (gameState === 'intro') {
+      startWaiting();
+    } else if (gameState === 'waiting') {
+      // Clicked too early
+      clearTimeout(timerRef.current);
+      setGameState('early');
+    } else if (gameState === 'early') {
+      // Retry round
+      startWaiting();
+    } else if (gameState === 'active') {
+      // Valid reaction!
+      const rt = Math.round(performance.now() - startTimeRef.current);
+      setRoundTime(rt);
+      const newHistory = [...roundHistoryRef.current, rt];
+      roundHistoryRef.current = newHistory;
+      setRoundHistory(newHistory);
 
-      setTimeout(() => {
-        if (trialIndex + 1 < TOTAL_TRIALS) {
-          setTrialIndex((prev) => prev + 1);
-          startTrial(trialIndex + 1);
-        } else {
-          finishTask();
-        }
-      }, 1200);
-      return;
-    }
+      if (newHistory.length >= TOTAL_ROUNDS) {
+        setGameState('finished');
+        const meanRt = Math.round(newHistory.reduce((a, b) => a + b, 0) / newHistory.length);
+        const lapses = newHistory.filter((t) => t > 500).length;
+        const invRt = Number((1000.0 / Math.max(meanRt, 100)).toFixed(2));
 
-    if (phase === 'active') {
-      const rt = performance.now() - stimulusStartRef.current;
-      cancelAnimationFrame(rafIdRef.current);
-
-      const isSlow = rt > 500;
-      trialsDataRef.current.push({ rt: Math.round(rt), falseStart: false, lapse: isSlow });
-
-      setFeedbackMsg(`${Math.round(rt)} ms ${isSlow ? '(Attentional Lapse)' : '✓'}`);
-      setPhase('feedback');
-
-      setTimeout(() => {
-        if (trialIndex + 1 < TOTAL_TRIALS) {
-          setTrialIndex((prev) => prev + 1);
-          startTrial(trialIndex + 1);
-        } else {
-          finishTask();
-        }
-      }, 1000);
-    }
-  }, [phase, trialIndex, startTrial]);
-
-  // Finish task and summarize psychomotor metrics
-  const finishTask = useCallback(() => {
-    setPhase('finished');
-    const validTrials = trialsDataRef.current.filter((t) => !t.falseStart && t.rt >= 100);
-    const meanRt =
-      validTrials.length > 0
-        ? validTrials.reduce((sum, t) => sum + t.rt, 0) / validTrials.length
-        : 310.0;
-
-    const lapses = trialsDataRef.current.filter((t) => t.lapse).length;
-    const falseStarts = trialsDataRef.current.filter((t) => t.falseStart).length;
-    const invRt = 1000.0 / meanRt;
-
-    onComplete({
-      mean_rt: Math.round(meanRt),
-      lapses,
-      false_starts: falseStarts,
-      inv_rt: Number(invRt.toFixed(2)),
-      trials_count: TOTAL_TRIALS,
-    });
-  }, [onComplete]);
-
-  // Keyboard Spacebar Listener
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (e.code === 'Space') {
-        e.preventDefault();
-        if (phase === 'instructions') {
-          startTrial(0);
-        } else if (phase === 'waiting' || phase === 'active') {
-          handleResponse();
-        }
+        setTimeout(() => {
+          onComplete({
+            mean_rt: meanRt,
+            lapses,
+            false_starts: 0,
+            inv_rt: invRt,
+            trials_count: TOTAL_ROUNDS,
+            round_history: newHistory,
+            best_rt: Math.min(...newHistory),
+          });
+        }, 1500);
+      } else {
+        setGameState('result');
       }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [phase, handleResponse, startTrial]);
+    } else if (gameState === 'result') {
+      // Advance to next round
+      setCurrentRound((prev) => prev + 1);
+      startWaiting();
+    }
+  }, [gameState, startWaiting, onComplete]);
 
   // Teardown timers ONLY on component unmount
   useEffect(() => {
     return () => {
-      clearTimeout(delayTimerRef.current);
-      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
+  // Keyboard spacebar listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleClick();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleClick]);
+
+  // Background and style configurations matching HumanBenchmark
+  let bgColor = '#1e293b';
+  let borderColor = 'var(--border-subtle)';
+  let headline = 'Reaction Time Test';
+  let subtext = 'When the red box turns green, click as quickly as you can.';
+
+  if (gameState === 'waiting') {
+    bgColor = '#ce2635'; // Deep HumanBenchmark Red
+    borderColor = '#ff4d5a';
+    headline = 'Wait for green...';
+    subtext = 'Do not click yet!';
+  } else if (gameState === 'early') {
+    bgColor = '#991b1b'; // Darker red warning
+    borderColor = '#f87171';
+    headline = 'Too soon!';
+    subtext = 'Click anywhere or press Spacebar to try again.';
+  } else if (gameState === 'active') {
+    bgColor = '#22c55e'; // Bright HumanBenchmark Green
+    borderColor = '#4ade80';
+    headline = 'CLICK!';
+    subtext = 'Click now!';
+  } else if (gameState === 'result') {
+    bgColor = '#0f172a';
+    borderColor = 'var(--cyan-primary)';
+    headline = `${roundTime} ms`;
+    subtext = `Round ${currentRound} of ${TOTAL_ROUNDS}. Click anywhere to continue.`;
+  } else if (gameState === 'finished') {
+    const avg = Math.round(roundHistory.reduce((a, b) => a + b, 0) / roundHistory.length);
+    bgColor = '#0f172a';
+    borderColor = 'var(--emerald-primary)';
+    headline = `Average: ${avg} ms`;
+    subtext = `Best: ${Math.min(...roundHistory)} ms. Finalizing reaction kinetics...`;
+  }
+
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-      {/* Progress & Header */}
+    <div style={{ maxWidth: '850px', margin: '0 auto' }}>
+      {/* Header bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div>
           <span className="badge-pill badge-cyan" style={{ marginRight: '8px' }}>Task 1 of 4</span>
-          <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Psychomotor Vigilance Task (PVT)</span>
+          <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Visual Reaction Time</span>
         </div>
         <div className="mono-num" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          Trial {trialIndex + 1} / {TOTAL_TRIALS}
+          Round {Math.min(currentRound, TOTAL_ROUNDS)} of {TOTAL_ROUNDS}
         </div>
       </div>
 
-      {/* Main Interaction Arena */}
+      {/* HumanBenchmark Interactive Arena */}
       <div
         className="test-arena"
-        onClick={() => {
-          if (phase === 'instructions') startTrial(0);
-          else if (phase === 'waiting' || phase === 'active') handleResponse();
-        }}
+        onClick={handleClick}
         style={{
-          cursor: phase === 'finished' ? 'default' : 'pointer',
-          borderColor: phase === 'active' ? (isLapse ? 'var(--rose-primary)' : 'var(--cyan-primary)') : 'var(--border-subtle)',
-          boxShadow: phase === 'active' ? (isLapse ? '0 0 35px rgba(244, 63, 94, 0.4)' : '0 0 35px rgba(6, 182, 212, 0.4)') : 'none',
+          backgroundColor: bgColor,
+          borderColor: borderColor,
+          minHeight: '440px',
+          cursor: 'pointer',
+          transition: 'background-color 0.05s ease',
+          boxShadow: gameState === 'active' ? '0 0 50px rgba(34, 197, 94, 0.5)' : 'none',
+          userSelect: 'none',
         }}
       >
-        {phase === 'instructions' && (
-          <div style={{ textAlign: 'center', maxWidth: '520px' }}>
-            <div style={{ width: '64px', height: '64px', margin: '0 auto 18px auto', borderRadius: '50%', background: 'var(--cyan-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Zap size={32} color="var(--cyan-glow)" />
+        <div style={{ textAlign: 'center', maxWidth: '580px', pointerEvents: 'none' }}>
+          {gameState === 'intro' && (
+            <div style={{ width: '64px', height: '64px', margin: '0 auto 20px auto', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Zap size={36} color="#38bdf8" />
             </div>
-            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '10px' }}>
-              Measure Vigilance Reaction Time
-            </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '24px' }}>
-              Keep your gaze focused on the box. As soon as the numbers start rolling in RED, press the <strong style={{ color: '#fff' }}>SPACEBAR</strong> or <strong style={{ color: '#fff' }}>CLICK</strong> as fast as you can. Do NOT click prematurely.
-            </p>
-            <button className="btn-primary" onClick={() => startTrial(0)}>
-              Start PVT Protocol (Spacebar)
-            </button>
-          </div>
-        )}
+          )}
 
-        {phase === 'waiting' && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: '#334155', margin: '0 auto 16px auto' }} />
-            <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', letterSpacing: '0.05em' }}>
-              READY... WAIT FOR COUNTER
-            </p>
-          </div>
-        )}
-
-        {phase === 'active' && (
-          <div style={{ textAlign: 'center' }}>
-            <div
-              className="mono-num"
-              style={{
-                fontSize: '4.8rem',
-                fontWeight: 800,
-                color: isLapse ? 'var(--rose-primary)' : '#ff3344',
-                textShadow: isLapse ? '0 0 30px rgba(244,63,94,0.8)' : '0 0 30px rgba(255,51,68,0.8)',
-                letterSpacing: '-0.04em',
-              }}
-            >
-              {displayMs}
+          {gameState === 'early' && (
+            <div style={{ width: '64px', height: '64px', margin: '0 auto 20px auto', borderRadius: '50%', background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertTriangle size={36} color="#ffffff" />
             </div>
-            <p style={{ fontSize: '0.95rem', color: isLapse ? 'var(--rose-primary)' : 'var(--text-muted)', marginTop: '8px' }}>
-              {isLapse ? 'ATTENTIONAL LAPSE (>500ms) — HIT SPACEBAR!' : 'REACT NOW!'}
-            </p>
-          </div>
-        )}
+          )}
 
-        {phase === 'feedback' && (
-          <div style={{ textAlign: 'center' }}>
-            <div
-              className="mono-num"
-              style={{
-                fontSize: '2.4rem',
-                fontWeight: 700,
-                color: feedbackMsg.includes('FALSE') ? 'var(--amber-primary)' : 'var(--emerald-glow)',
-              }}
-            >
-              {feedbackMsg}
+          {gameState === 'finished' && (
+            <div style={{ width: '64px', height: '64px', margin: '0 auto 20px auto', borderRadius: '50%', background: 'var(--emerald-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CheckCircle2 size={36} color="var(--emerald-glow)" />
             </div>
-          </div>
-        )}
+          )}
 
-        {phase === 'finished' && (
-          <div style={{ textAlign: 'center' }}>
-            <CheckCircle2 size={48} color="var(--emerald-glow)" style={{ margin: '0 auto 12px auto' }} />
-            <h4 style={{ fontSize: '1.25rem', fontWeight: 600 }}>PVT Task Complete</h4>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Aggregating reaction kinetics...</p>
-          </div>
-        )}
+          <h3
+            className="mono-num"
+            style={{
+              fontSize: gameState === 'result' || gameState === 'finished' ? '4.2rem' : '2.8rem',
+              fontWeight: 800,
+              color: '#ffffff',
+              marginBottom: '14px',
+              letterSpacing: '-0.02em',
+              textShadow: '0 2px 10px rgba(0,0,0,0.3)',
+            }}
+          >
+            {headline}
+          </h3>
+
+          <p
+            style={{
+              color: 'rgba(255,255,255,0.85)',
+              fontSize: '1.05rem',
+              lineHeight: 1.6,
+              fontWeight: 500,
+            }}
+          >
+            {subtext}
+          </p>
+
+          {gameState === 'intro' && (
+            <div style={{ marginTop: '24px' }}>
+              <span className="btn-primary" style={{ pointerEvents: 'none' }}>
+                Click Anywhere or Press Spacebar to Start
+              </span>
+            </div>
+          )}
+
+          {/* Show ongoing trial score pills */}
+          {roundHistory.length > 0 && gameState !== 'finished' && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '28px' }}>
+              {roundHistory.map((score, idx) => (
+                <div
+                  key={idx}
+                  className="mono-num"
+                  style={{
+                    background: 'rgba(0,0,0,0.4)',
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.82rem',
+                    color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                  }}
+                >
+                  R{idx + 1}: {score}ms
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-        Tip: Maintain your visual gaze within the boundary to optimize oculomotor stability metrics.
+      <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+        <span>Standard HumanBenchmark visual latency paradigm</span>
+        <span>Average human reaction time: ~200ms – 250ms</span>
       </div>
     </div>
   );
