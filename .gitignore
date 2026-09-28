@@ -3,12 +3,38 @@ node_modules/
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 
-# Builds
+# Builds & Deployments
 dist/
 dist-ssr/
+frontend/dist/
+.vercel/
 *.local
 
-# Environment variables
+# Environment & Security Vaults
 .env
+.env*.local
+backend/.env
+frontend/.env
+!*.env.example
 sessions_cache.json
+backend/sessions_cache.json
+*.enc
+sessions_vault.enc
+backend/sessions_vault.enc
+*.sqlite
+*.db
+.supabase/
+
+# Scratch & Temporary Media
+*.wav
+*.mp3
+*.webm
+*.log
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

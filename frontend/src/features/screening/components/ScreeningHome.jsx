@@ -7,18 +7,19 @@ import InterpretationCard from '../results/InterpretationCard';
 import ClinicalSummaryExport from '../results/ClinicalSummaryExport';
 import ScreeningDisclaimer from './ScreeningDisclaimer';
 import { SUPPORT_RESOURCES } from '../results/supportResources';
+import { isInstrumentRunnable, applyInstrumentText, getInstrumentLicensing } from '../engine/textLoader';
+import LicensingGateModal from './LicensingGateModal';
+import AttentionLabView from '../../gaze/components/AttentionLabView';
 
 import {
-  Sparkles,
   ArrowRight,
-  ShieldCheck,
-  CheckCircle2,
+  ShieldAlert,
   Clock,
   FileText,
-  Layers,
   HeartHandshake,
   RotateCcw,
   ExternalLink,
+  Eye,
 } from 'lucide-react';
 
 export default function ScreeningHome() {
@@ -26,6 +27,9 @@ export default function ScreeningHome() {
   const [view, setView] = useState('home');
   const [selectedFlow, setSelectedFlow] = useState(null);
   const [isAgeModalOpen, setIsAgeModalOpen] = useState(false);
+
+  // Licensing Modal state
+  const [licensingModalTarget, setLicensingModalTarget] = useState(null);
 
   // Questionnaire runner state
   const [currentTestIndex, setCurrentTestIndex] = useState(0);
@@ -35,6 +39,13 @@ export default function ScreeningHome() {
 
   // Flow Selection & Age Verification
   const handleSelectFlow = (flow) => {
+    // Check if any test in this flow requires official text authorization
+    const unrunnableTestId = flow.testIds.find(id => !isInstrumentRunnable(id));
+    if (unrunnableTestId) {
+      setLicensingModalTarget(unrunnableTestId);
+      return;
+    }
+
     setSelectedFlow(flow);
     setIsAgeModalOpen(true);
   };
@@ -48,9 +59,10 @@ export default function ScreeningHome() {
     setView('questionnaire');
   };
 
-  // Questionnaire navigation logic
+  // Questionnaire navigation logic with dynamic text hydration
   const activeTestId = selectedFlow?.testIds[currentTestIndex];
-  const activeTestConfig = SCREENER_REGISTRY[activeTestId];
+  const rawTestConfig = SCREENER_REGISTRY[activeTestId];
+  const activeTestConfig = rawTestConfig ? applyInstrumentText(rawTestConfig) : null;
   const activeItem = activeTestConfig?.items[currentQuestionIndex];
 
   const handleSelectOption = (value) => {
@@ -98,6 +110,15 @@ export default function ScreeningHome() {
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+      {/* Licensing Gate Modal */}
+      <LicensingGateModal
+        isOpen={Boolean(licensingModalTarget)}
+        instrumentId={licensingModalTarget}
+        instrumentName={SCREENER_REGISTRY[licensingModalTarget]?.name}
+        onClose={() => setLicensingModalTarget(null)}
+        onSuccessLoaded={() => setLicensingModalTarget(null)}
+      />
+
       {/* Age Gate Modal */}
       <AgeGateModal
         isOpen={isAgeModalOpen}
@@ -131,59 +152,143 @@ export default function ScreeningHome() {
             </h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {SCREENING_FLOWS.map((flow) => (
-                <div
-                  key={flow.id}
-                  onClick={() => handleSelectFlow(flow)}
-                  className="glass-panel"
-                  style={{
-                    padding: '24px 28px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    gap: '20px',
-                    border: flow.id === 'quick_audhd' ? '1px solid var(--violet-glow)' : '1px solid var(--border-subtle)',
-                    boxShadow: flow.id === 'quick_audhd' ? '0 0 25px rgba(139, 92, 246, 0.15)' : 'none',
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                      <span className="badge-pill badge-violet">{flow.badge}</span>
-                      <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Clock size={13} /> {flow.duration}
-                      </span>
-                    </div>
-                    <h4 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
-                      {flow.title}
-                    </h4>
-                    <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: 0 }}>
-                      {flow.description}
-                    </p>
-                  </div>
+              {SCREENING_FLOWS.map((flow) => {
+                const isFlowRunnable = flow.testIds.every((id) => isInstrumentRunnable(id));
 
-                  <button className="btn-primary" style={{ flexShrink: 0, padding: '10px 20px', fontSize: '0.9rem' }}>
-                    <span>Start</span>
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-              ))}
+                return (
+                  <div
+                    key={flow.id}
+                    onClick={() => handleSelectFlow(flow)}
+                    className="glass-panel"
+                    style={{
+                      padding: '24px 28px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      gap: '20px',
+                      border: !isFlowRunnable
+                        ? '1px solid rgba(245, 158, 11, 0.3)'
+                        : flow.id === 'quick_audhd'
+                        ? '1px solid var(--violet-glow)'
+                        : '1px solid var(--border-subtle)',
+                      boxShadow: flow.id === 'quick_audhd' ? '0 0 25px rgba(139, 92, 246, 0.15)' : 'none',
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                        <span className="badge-pill badge-violet">{flow.badge}</span>
+                        {!isFlowRunnable && (
+                          <span className="badge-pill badge-amber" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <ShieldAlert size={11} />
+                            <span>Official Text Pending</span>
+                          </span>
+                        )}
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Clock size={13} /> {flow.duration}
+                        </span>
+                      </div>
+                      <h4 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
+                        {flow.title}
+                      </h4>
+                      <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: 0 }}>
+                        {flow.description}
+                      </p>
+                    </div>
+
+                    <button
+                      className={isFlowRunnable ? 'btn-primary' : 'btn-secondary'}
+                      style={{ flexShrink: 0, padding: '10px 20px', fontSize: '0.9rem' }}
+                    >
+                      {isFlowRunnable ? (
+                        <>
+                          <span>Start</span>
+                          <ArrowRight size={16} />
+                        </>
+                      ) : (
+                        <>
+                          <ShieldAlert size={15} color="#f59e0b" />
+                          <span>View Licensing</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Coming Soon Stubs */}
+          {/* Attention Lab Experimental Card */}
+          <div
+            className="glass-panel"
+            style={{
+              padding: '24px 28px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '20px',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(6, 182, 212, 0.03))',
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span className="badge-pill badge-violet">Experimental Research</span>
+                <span className="badge-pill badge-cyan">Zero Video Storage • 100% On-Device</span>
+              </div>
+              <h4 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
+                Attention Lab: Free-Viewing Oculomotor Exploration
+              </h4>
+              <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', margin: 0 }}>
+                Optionally analyze natural gaze exploration, dwell time, and blink rates during a free-viewing stimulus task. Modeled on Deng et al. (ECML PKDD 2022). Non-diagnostic and voluntary.
+              </p>
+            </div>
+            <button
+              onClick={() => setView('attention_lab')}
+              className="btn-primary"
+              style={{ flexShrink: 0, padding: '10px 20px', fontSize: '0.88rem' }}
+            >
+              <Eye size={16} />
+              <span>Explore Attention Lab</span>
+            </button>
+          </div>
+
+          {/* Additional Extended Instruments (Stubs & Placeholders) */}
           <div className="glass-panel" style={{ padding: '24px 28px' }}>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '12px', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Additional Instruments (Coming Soon)
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
-              {['raads_r', 'aq50', 'rbq2a'].map((stubId) => {
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                Additional Clinical Instruments (Licensing Gate)
+              </h4>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Click to view copyright & supply authorized text</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
+              {['raads_r', 'aq50', 'rbq2a', 'vanderbilt'].map((stubId) => {
                 const stub = SCREENER_REGISTRY[stubId];
+                const isLoaded = isInstrumentRunnable(stubId);
+
                 return (
-                  <div key={stubId} style={{ background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-muted)' }}>{stub.name}</div>
-                    <span className="badge-pill badge-amber" style={{ fontSize: '0.72rem', marginTop: '8px', display: 'inline-block' }}>
-                      Pending Licensing
+                  <div
+                    key={stubId}
+                    onClick={() => setLicensingModalTarget(stubId)}
+                    style={{
+                      background: 'rgba(255,255,255,0.02)',
+                      padding: '14px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-subtle)',
+                      cursor: 'pointer',
+                      transition: 'border-color 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--cyan-glow)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: '0.86rem', color: '#fff', marginBottom: '6px' }}>
+                      {stub?.shortName || stub?.name || stubId}
+                    </div>
+                    <span
+                      className={`badge-pill ${isLoaded ? 'badge-emerald' : 'badge-amber'}`}
+                      style={{ fontSize: '0.72rem', display: 'inline-block' }}
+                    >
+                      {isLoaded ? 'Text Loaded' : 'Pending Authorization'}
                     </span>
                   </div>
                 );
@@ -300,6 +405,11 @@ export default function ScreeningHome() {
       {/* VIEW 4: Printable Clinician Summary */}
       {view === 'export' && (
         <ClinicalSummaryExport results={completedResults} onBack={() => setView('results')} />
+      )}
+
+      {/* VIEW 5: Experimental Attention Lab (Oculomotor Free-Viewing) */}
+      {view === 'attention_lab' && (
+        <AttentionLabView onBack={() => setView('home')} />
       )}
     </div>
   );

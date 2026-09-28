@@ -1,13 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  ResponsiveContainer,
-} from 'recharts';
-import {
   Brain,
   Zap,
   ShieldCheck,
@@ -17,20 +9,11 @@ import {
   Sparkles,
   Award,
   AlertCircle,
-  Eye,
-  Mic,
-  Camera,
-  Layers,
-  CheckCircle2,
   HelpCircle,
-  FileText,
-  User,
   Baby,
-  Activity,
-  Check,
-  Info,
-  Clock,
-  ArrowRight,
+  Camera,
+  User,
+  CheckCircle2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -56,13 +39,14 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
 
   const {
     session_id,
-    cpi_score,
     percentile_rank,
     confidence_interval,
-    domains = {},
-    shap_explanations = [],
-    narrative_report = {},
-  } = analysisResult;
+  } = analysisResult || {};
+
+  const domains = analysisResult?.domains || {};
+  const shap_explanations = Array.isArray(analysisResult?.shap_explanations) ? analysisResult.shap_explanations : [];
+  const narrative_report = analysisResult?.narrative_report || {};
+  const cpi_score = Number(analysisResult?.cpi_score) || 75;
 
   const tasks = rawPayload?.tasks || {};
   const biomarkers = rawPayload?.biomarkers || {};
@@ -74,14 +58,7 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
     head_yaw_var: 3.2,
   };
 
-  // Prepare radar chart data
-  const radarData = [
-    { domain: 'Executive Function', score: domains.executive_function || 75, fullMark: 100 },
-    { domain: 'Sustained Attention', score: domains.sustained_attention || 75, fullMark: 100 },
-    { domain: 'Processing Speed', score: domains.processing_speed || 75, fullMark: 100 },
-    { domain: 'Cognitive Stability', score: domains.cognitive_stability || 75, fullMark: 100 },
-  ];
-
+  // Prepare radar chart data with guaranteed numeric non-NaN values
   // Top SHAP impacts
   const shapData = (shap_explanations || []).slice(0, 6);
 
@@ -97,6 +74,7 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
     return { label: 'Elevated Friction Observed', color: 'var(--rose-primary)', badge: 'badge-rose' };
   };
 
+  const cpiDesc = getCpiDescriptor(cpi_score);
   const isPediatricOnly = !tasks.pvt && screening?.participant?.isChild;
   const mchatResult = screening?.results?.find((r) => r.testId === 'mchat') || screening?.results?.[0];
 
@@ -393,13 +371,13 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
               </div>
 
               {/* 5-Trial Breakdown */}
-              {tasks.pvt?.trials && tasks.pvt.trials.length > 0 && (
+              {((tasks.pvt?.round_history || tasks.pvt?.trials) || []).length > 0 && (
                 <div style={{ marginBottom: '14px' }}>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     Round-By-Round Trials:
                   </div>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {tasks.pvt.trials.map((t, idx) => (
+                    {(tasks.pvt?.round_history || tasks.pvt?.trials || []).map((t, idx) => (
                       <span
                         key={idx}
                         className="mono-num"
@@ -562,9 +540,9 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
               </div>
 
               {/* Recognized Category Words Chips */}
-              {tasks.verbal?.category_hits && tasks.verbal.category_hits.length > 0 && (
+              {((tasks.verbal?.category_hits || tasks.verbal?.matched_items) || []).length > 0 && (
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  {tasks.verbal.category_hits.map((w, idx) => (
+                  {((tasks.verbal?.category_hits || tasks.verbal?.matched_items) || []).map((w, idx) => (
                     <span key={idx} className="badge-pill badge-emerald" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
                       ✓ {w}
                     </span>
@@ -752,11 +730,22 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
                         {res.testId === 'mchat' && (
                           <div>
                             <div className="mono-num" style={{ fontSize: '1.6rem', fontWeight: 800, color: isPos ? 'var(--rose-primary)' : 'var(--emerald-glow)' }}>
-                              {res.totalScore} / {res.maxScore}
+                              {res.totalScore ?? 0} / {res.maxScore || 20}
                             </div>
                             <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                              Risk Tier: <strong style={{ textTransform: 'uppercase' }}>{res.riskLevel}</strong>
+                              Risk Tier: <strong style={{ textTransform: 'uppercase' }}>{res.riskLevel || 'evaluated'}</strong>
                             </div>
+                          </div>
+                        )}
+
+                        {!['asrs6', 'aq10', 'catq', 'mchat'].includes(res.testId) && res.totalScore !== undefined && (
+                          <div>
+                            <div className="mono-num" style={{ fontSize: '1.6rem', fontWeight: 800, color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)' }}>
+                              {res.totalScore} {res.maxScore ? `/ ${res.maxScore}` : ''}
+                            </div>
+                            {res.cutoff && (
+                              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Cutoff Score &ge; {res.cutoff}</div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -774,11 +763,13 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.98rem', color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)', marginBottom: '4px' }}>
                         {isPos ? <Sparkles size={18} /> : <CheckCircle2 size={18} />}
-                        <span>{res.headline}</span>
+                        <span>{res.headline || 'Screening Finding'}</span>
                       </div>
-                      <p style={{ fontSize: '0.86rem', color: 'var(--text-main)', lineHeight: 1.6, margin: 0 }}>
-                        {res.summary}
-                      </p>
+                      {res.summary && (
+                        <p style={{ fontSize: '0.86rem', color: 'var(--text-main)', lineHeight: 1.6, margin: 0 }}>
+                          {res.summary}
+                        </p>
+                      )}
                     </div>
 
                     {/* ASRS Continuous Sum Band */}
@@ -791,22 +782,27 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
                       </div>
                     )}
 
-                    {/* CAT-Q Subscales */}
-                    {res.subscales && (
+                    {/* Subscales */}
+                    {res.subscales && typeof res.subscales === 'object' && Object.keys(res.subscales).length > 0 && (
                       <div style={{ marginBottom: '16px' }}>
                         <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--cyan-glow)', marginBottom: '10px' }}>
-                          Camouflaging Subscale Distribution:
+                          {res.testId === 'catq' ? 'Camouflaging Subscale Distribution:' : 'Subscale Distribution:'}
                         </div>
                         <div className="grid-3" style={{ gap: '12px' }}>
                           {Object.keys(res.subscales).map((k) => {
                             const sub = res.subscales[k];
+                            const subName = sub?.name || k.replace(/_/g, ' ');
+                            const score = sub?.score ?? (typeof sub === 'number' ? sub : 0);
+                            const maxVal = sub?.maxScore || sub?.max || null;
                             return (
                               <div key={k} style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
-                                  <span>{sub.name}</span>
-                                  <span className="mono-num" style={{ color: 'var(--cyan-glow)' }}>{sub.score}/{sub.maxScore}</span>
+                                  <span style={{ textTransform: 'capitalize' }}>{subName}</span>
+                                  <span className="mono-num" style={{ color: 'var(--cyan-glow)' }}>{score}{maxVal ? `/${maxVal}` : ''}</span>
                                 </div>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>{sub.description}</div>
+                                {sub?.description && (
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>{sub.description}</div>
+                                )}
                               </div>
                             );
                           })}
@@ -815,10 +811,12 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
                     )}
 
                     {/* Clinical Guidance / Next Steps */}
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5, background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: 'var(--radius-sm)' }}>
-                      <strong style={{ color: '#fff' }}>Clinical Guidance: </strong>
-                      {res.recommendation}
-                    </div>
+                    {res.recommendation && (
+                      <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5, background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: 'var(--radius-sm)' }}>
+                        <strong style={{ color: '#fff' }}>Clinical Guidance: </strong>
+                        {res.recommendation}
+                      </div>
+                    )}
                   </div>
                 );
               })}

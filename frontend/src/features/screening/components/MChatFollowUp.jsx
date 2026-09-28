@@ -3,13 +3,32 @@ import { ArrowRight, ArrowLeft, CheckCircle2, AlertTriangle, ShieldAlert } from 
 import ScreeningDisclaimer from './ScreeningDisclaimer';
 
 export default function MChatFollowUp({ initialResult, testConfig, onCompleteFollowUp }) {
-  const flaggedIds = initialResult.flaggedItemIds || [];
-  const flaggedItems = testConfig.items.filter((i) => flaggedIds.includes(i.id));
+  const flaggedIds = initialResult?.flaggedItemIds || [];
+  const flaggedItems = testConfig?.items?.filter((i) => flaggedIds.includes(i.id)) || [];
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [followUpAnswers, setFollowUpAnswers] = useState({}); // { [itemId]: boolean }
 
   const currentItem = flaggedItems[currentIndex];
+
+  if (!currentItem || flaggedItems.length === 0) {
+    return (
+      <div style={{ maxWidth: '780px', margin: '0 auto' }}>
+        <div className="glass-panel" style={{ padding: '36px 32px', textAlign: 'center' }}>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '16px' }}>
+            Follow-Up Clarification Complete
+          </h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '24px' }}>
+            All milestone criteria have been recorded.
+          </p>
+          <button onClick={() => onCompleteFollowUp(followUpAnswers)} className="btn-primary" style={{ padding: '12px 24px' }}>
+            <span>Proceed to Diagnostic Profile</span>
+            <ArrowRight size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const handleSelect = (stillAtRisk) => {
     setFollowUpAnswers((prev) => ({

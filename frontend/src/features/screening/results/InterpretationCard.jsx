@@ -40,6 +40,24 @@ export default function InterpretationCard({ result }) {
               {result.totalScore} / {result.maxScore} <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-muted)' }}>(Clinical Cutoff &ge; {result.cutoff})</span>
             </div>
           )}
+
+          {result.testId === 'raads_r' && (
+            <div className="mono-num" style={{ fontSize: '1.4rem', fontWeight: 800, color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)' }}>
+              {result.totalScore} / {result.maxScore} <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-muted)' }}>(Cutoff &ge; {result.cutoff})</span>
+            </div>
+          )}
+
+          {result.testId === 'aq50' && (
+            <div className="mono-num" style={{ fontSize: '1.4rem', fontWeight: 800, color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)' }}>
+              {result.totalScore} / {result.maxScore} <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-muted)' }}>(Cutoff &ge; {result.cutoff})</span>
+            </div>
+          )}
+
+          {result.testId === 'rbq2a' && (
+            <div className="mono-num" style={{ fontSize: '1.4rem', fontWeight: 800, color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)' }}>
+              {result.meanScore} <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-muted)' }}>Mean (Cutoff &ge; {result.meanCutoff})</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -62,28 +80,33 @@ export default function InterpretationCard({ result }) {
         </p>
       </div>
 
-      {/* CAT-Q Subscales Breakdown */}
-      {result.subscales && (
+      {/* Subscales Breakdown */}
+      {result.subscales && typeof result.subscales === 'object' && (
         <div style={{ marginBottom: '20px' }}>
           <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '12px', color: 'var(--cyan-glow)' }}>
-            Camouflaging Subscale Distribution
+            {result.testId === 'catq' ? 'Camouflaging Subscale Distribution' : 'Subscale Distribution'}
           </h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {Object.keys(result.subscales).map((key) => {
               const sub = result.subscales[key];
-              const pct = Math.round((sub.score / sub.maxScore) * 100);
+              const score = sub?.score ?? (typeof sub === 'number' ? sub : 0);
+              const maxVal = sub?.maxScore || sub?.max || (score > 0 ? score : 100);
+              const pct = Math.min(100, Math.max(0, Math.round((score / maxVal) * 100)));
+              const subName = sub?.name || key.replace(/_/g, ' ');
 
               return (
                 <div key={key} style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>{sub.name}</span>
+                    <span style={{ fontWeight: 600, fontSize: '0.88rem', textTransform: 'capitalize' }}>{subName}</span>
                     <span className="mono-num" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--cyan-glow)' }}>
-                      {sub.score} / {sub.maxScore}
+                      {score} / {maxVal}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)', marginBottom: '8px' }}>
-                    {sub.description}
-                  </div>
+                  {sub?.description && (
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)', marginBottom: '8px' }}>
+                      {sub.description}
+                    </div>
+                  )}
                   <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.06)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
                     <div
                       style={{

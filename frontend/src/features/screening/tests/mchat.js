@@ -30,26 +30,26 @@ export const mchat = {
   // 20 items: reverse-keyed items are 2, 5, 12 (where 'Yes' = at-risk point)
   // All other items are standard keyed (where 'No' = at-risk point)
   items: [
-    { id: 'mc_1', number: 1, text: '[Item 1 Placeholder: Points to objects of interest - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_2', number: 2, text: '[Item 2 Placeholder: Hearing sensitivity / suspected deafness - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'yes' }, // reverse
-    { id: 'mc_3', number: 3, text: '[Item 3 Placeholder: Pretend play behaviors - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_4', number: 4, text: '[Item 4 Placeholder: Climbing on objects - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_5', number: 5, text: '[Item 5 Placeholder: Unusual finger movements near eyes - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'yes' }, // reverse
-    { id: 'mc_6', number: 6, text: '[Item 6 Placeholder: Pointing to ask for something - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_7', number: 7, text: '[Item 7 Placeholder: Pointing to show something interesting - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_8', number: 8, text: '[Item 8 Placeholder: Interest in other children - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_9', number: 9, text: '[Item 9 Placeholder: Showing objects to parents - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_10', number: 10, text: '[Item 10 Placeholder: Responds to name when called - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_11', number: 11, text: '[Item 11 Placeholder: Smiles back when smiled at - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_12', number: 12, text: '[Item 12 Placeholder: Upset by everyday noises - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'yes' }, // reverse
-    { id: 'mc_13', number: 13, text: '[Item 13 Placeholder: Walking ability - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_14', number: 14, text: '[Item 14 Placeholder: Looks at parent’s eyes when talking/playing - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_15', number: 15, text: '[Item 15 Placeholder: Imitating parent’s actions - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_16', number: 16, text: '[Item 16 Placeholder: Turns head to look at what parent is looking at - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_17', number: 17, text: '[Item 17 Placeholder: Attempts to get parent to watch them - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_18', number: 18, text: '[Item 18 Placeholder: Understands verbal requests - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_19', number: 19, text: '[Item 19 Placeholder: Looks at parent’s face in new situations - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
-    { id: 'mc_20', number: 20, text: '[Item 20 Placeholder: Enjoys movement and sensory activities - Licensed text required © 2009 Robins et al.]', atRiskAnswer: 'no' },
+    { id: 'mc_1', number: 1, text: 'If you point at something across the room, does your child look at it? (FOR EXAMPLE, if you point at a toy or an animal, does your child look at the toy or animal?)', atRiskAnswer: 'no' },
+    { id: 'mc_2', number: 2, text: 'Have you ever wondered if your child might be deaf?', atRiskAnswer: 'yes' }, // reverse
+    { id: 'mc_3', number: 3, text: 'Does your child play pretend or make-believe? (FOR EXAMPLE, pretend to drink from an empty cup, talk on a toy phone, or feed a doll or stuffed animal?)', atRiskAnswer: 'no' },
+    { id: 'mc_4', number: 4, text: 'Does your child like climbing on things? (FOR EXAMPLE, furniture, playground equipment, or stairs?)', atRiskAnswer: 'no' },
+    { id: 'mc_5', number: 5, text: 'Does your child make unusual finger movements near his or her eyes? (FOR EXAMPLE, does your child wiggle his or her fingers close to his or her eyes?)', atRiskAnswer: 'yes' }, // reverse
+    { id: 'mc_6', number: 6, text: 'Does your child point with one finger to ask for something or to get help? (FOR EXAMPLE, pointing to a snack or toy that is out of reach?)', atRiskAnswer: 'no' },
+    { id: 'mc_7', number: 7, text: 'Does your child point with one finger to show you something interesting? (FOR EXAMPLE, pointing to an airplane in the sky or a big truck in the street?)', atRiskAnswer: 'no' },
+    { id: 'mc_8', number: 8, text: 'Is your child interested in other children? (FOR EXAMPLE, does your child look at other children, smile at them, or go to them?)', atRiskAnswer: 'no' },
+    { id: 'mc_9', number: 9, text: 'Does your child show you things by bringing them to you or holding them up for you to see – not to get help, but just to share? (FOR EXAMPLE, showing you a flower, a stuffed animal, or a toy truck?)', atRiskAnswer: 'no' },
+    { id: 'mc_10', number: 10, text: 'Does your child respond when you call his or her name? (FOR EXAMPLE, does he or she look up, talk or babble, or stop what he or she is doing when you call his or her name?)', atRiskAnswer: 'no' },
+    { id: 'mc_11', number: 11, text: 'When you smile at your child, does he or she smile back at you?', atRiskAnswer: 'no' },
+    { id: 'mc_12', number: 12, text: 'Does your child get upset by everyday noises? (FOR EXAMPLE, does your child scream or cry to noise such as a vacuum cleaner or loud music?)', atRiskAnswer: 'yes' }, // reverse
+    { id: 'mc_13', number: 13, text: 'Does your child walk?', atRiskAnswer: 'no' },
+    { id: 'mc_14', number: 14, text: 'Does your child look you in the eye when you are talking to him or her, playing with him or her, or dressing him or her?', atRiskAnswer: 'no' },
+    { id: 'mc_15', number: 15, text: 'Does your child try to copy what you do? (FOR EXAMPLE, wave bye-bye, clap, or make a funny noise when you do?)', atRiskAnswer: 'no' },
+    { id: 'mc_16', number: 16, text: 'If you turn your head to look at something, does your child look around to see what you are looking at?', atRiskAnswer: 'no' },
+    { id: 'mc_17', number: 17, text: 'Does your child try to get you to watch him or her? (FOR EXAMPLE, does your child look at you for praise, or say "look" or "watch me"?)', atRiskAnswer: 'no' },
+    { id: 'mc_18', number: 18, text: 'Does your child understand when you tell him or her to do something? (FOR EXAMPLE, if you don’t point, can your child understand "put the book on the chair" or "bring me the blanket"?)', atRiskAnswer: 'no' },
+    { id: 'mc_19', number: 19, text: 'If something new happens, does your child look at your face to see how you feel about it? (FOR EXAMPLE, if he or she hears a strange or funny noise, or sees a new toy, will he or she look at your face?)', atRiskAnswer: 'no' },
+    { id: 'mc_20', number: 20, text: 'Does your child like movement activities? (FOR EXAMPLE, being swung or bounced on your knee?)', atRiskAnswer: 'no' },
   ],
   scoringStrategy: 'mchat_scoring',
   thresholds: {

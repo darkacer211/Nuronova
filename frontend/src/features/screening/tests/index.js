@@ -3,7 +3,10 @@ import { aq10 } from './aq10.js';
 import { catq } from './catq.js';
 import { mchat } from './mchat.js';
 import { aqChild } from './aqChild.js';
-import { raadsRStub, aq50Stub, rbq2aStub } from './stubs.js';
+import { vanderbilt } from './vanderbilt.js';
+import { raadsR } from './raadsR.js';
+import { aq50 } from './aq50.js';
+import { rbq2a } from './rbq2a.js';
 
 export const SCREENER_REGISTRY = {
   asrs6,
@@ -11,9 +14,10 @@ export const SCREENER_REGISTRY = {
   catq,
   mchat,
   aq_child: aqChild,
-  raads_r: raadsRStub,
-  aq50: aq50Stub,
-  rbq2a: rbq2aStub,
+  vanderbilt,
+  raads_r: raadsR,
+  aq50,
+  rbq2a,
 };
 
 export const SCREENING_FLOWS = [

@@ -87,6 +87,8 @@ export default function ClinicalSummaryExport({ results, onBack }) {
                     {res.testId === 'asrs6' && `${res.shadedCount}/6 Criteria Endorsed (${res.isPositive ? 'Positive Screen' : 'Below Cutoff'})`}
                     {res.testId === 'aq10' && `${res.totalScore}/10 Points (${res.isPositive ? 'Positive Screen' : 'Below Cutoff'})`}
                     {res.testId === 'catq' && `${res.totalScore}/175 (${res.isPositive ? 'Elevated Camouflaging' : 'Typical Range'})`}
+                    {res.testId === 'mchat' && `${res.totalScore ?? 0}/20 Points (${res.isPositive ? 'Elevated Pediatric Risk' : 'Typical Range'})`}
+                    {!['asrs6', 'aq10', 'catq', 'mchat'].includes(res.testId) && res.totalScore !== undefined && `${res.totalScore}${res.maxScore ? `/${res.maxScore}` : ''} Points (${res.isPositive ? 'Above Cutoff' : 'Below Cutoff'})`}
                   </span>
                 </div>
 
@@ -94,12 +96,19 @@ export default function ClinicalSummaryExport({ results, onBack }) {
                   {res.summary}
                 </p>
 
-                {/* Subscales for CAT-Q */}
-                {res.subscales && (
-                  <div style={{ display: 'flex', gap: '20px', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
-                    <span>Compensation: <strong>{res.subscales.compensation.score}/{res.subscales.compensation.maxScore}</strong></span>
-                    <span>Masking: <strong>{res.subscales.masking.score}/{res.subscales.masking.maxScore}</strong></span>
-                    <span>Assimilation: <strong>{res.subscales.assimilation.score}/{res.subscales.assimilation.maxScore}</strong></span>
+                {/* Subscales breakdown */}
+                {res.subscales && typeof res.subscales === 'object' && (
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
+                    {Object.entries(res.subscales).map(([key, sub]) => {
+                      const name = sub?.name || key.replace(/_/g, ' ');
+                      const score = sub?.score ?? (typeof sub === 'number' ? sub : 0);
+                      const max = sub?.maxScore || sub?.max || null;
+                      return (
+                        <span key={key} style={{ textTransform: 'capitalize' }}>
+                          {name}: <strong>{score}{max ? `/${max}` : ''}</strong>
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
               </div>

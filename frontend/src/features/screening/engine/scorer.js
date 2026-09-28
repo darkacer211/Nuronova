@@ -279,6 +279,220 @@ export function scoreMChat(testConfig, responses, followUpResponses = null) {
 }
 
 /**
+ * Score RAADS-R (80 items, 4 subscales)
+ * Citation: Ritvo, R. A., et al. (2011). J Autism Dev Disord, 41(8), 884-897.
+ * Standard responses: true_now_and_young (3), true_only_now (2), true_only_young (1), never_true (0).
+ * Reverse items (16 normative items in social relatedness): true_now_and_young (0), true_only_now (1), true_only_young (2), never_true (3).
+ * Cutoff: Total score >= 65 indicates high likelihood of autism spectrum condition.
+ */
+export function scoreRAADSR(testConfig, responses) {
+  let totalScore = 0;
+  const subscales = {
+    social_relatedness: { score: 0, count: 0, cutoff: 31, max: 117, name: 'Social Relatedness' },
+    circumscribed_interests: { score: 0, count: 0, cutoff: 15, max: 42, name: 'Circumscribed Interests' },
+    language: { score: 0, count: 0, cutoff: 4, max: 21, name: 'Language' },
+    sensory_motor: { score: 0, count: 0, cutoff: 16, max: 60, name: 'Sensory-Motor' },
+  };
+  const itemScores = [];
+
+  testConfig.items.forEach((item) => {
+    const rawVal = responses[item.id];
+    let score = 0;
+
+    if (item.isReverse) {
+      if (rawVal === 'never_true') score = 3;
+      else if (rawVal === 'true_only_young') score = 2;
+      else if (rawVal === 'true_only_now') score = 1;
+      else if (rawVal === 'true_now_and_young') score = 0;
+    } else {
+      if (rawVal === 'true_now_and_young') score = 3;
+      else if (rawVal === 'true_only_now') score = 2;
+      else if (rawVal === 'true_only_young') score = 1;
+      else if (rawVal === 'never_true') score = 0;
+    }
+
+    totalScore += score;
+    if (subscales[item.subscale]) {
+      subscales[item.subscale].score += score;
+      subscales[item.subscale].count += 1;
+    }
+
+    itemScores.push({
+      id: item.id,
+      number: item.number,
+      subscale: item.subscale,
+      rawVal,
+      score,
+      isReverse: item.isReverse,
+    });
+  });
+
+  const isPositive = totalScore >= (testConfig.thresholds?.clinicalCutoff || 65);
+  const interpretation = isPositive
+    ? testConfig.interpretations.elevated
+    : testConfig.interpretations.nonElevated;
+
+  const subscaleResults = {};
+  for (const [key, data] of Object.entries(subscales)) {
+    subscaleResults[key] = {
+      ...data,
+      isElevated: data.score >= data.cutoff,
+    };
+  }
+
+  return {
+    testId: testConfig.id,
+    name: testConfig.name,
+    condition: testConfig.condition,
+    totalScore,
+    maxScore: testConfig.thresholds?.maxScore || 240,
+    cutoff: testConfig.thresholds?.clinicalCutoff || 65,
+    isPositive,
+    subscales: subscaleResults,
+    headline: interpretation.title,
+    summary: interpretation.summary,
+    recommendation: isPositive
+      ? 'A score >= 65 is strongly correlated with autism spectrum diagnosis in adults. A formal clinical diagnostic interview is recommended.'
+      : 'Scores below 65 indicate autistic traits are within typical comparison ranges.',
+    itemScores,
+  };
+}
+
+/**
+ * Score AQ-50 (50 items, 5 subscales)
+ * Citation: Baron-Cohen, S., et al. (2001). J Autism Dev Disord, 31(1), 5-17.
+ * Binary scoring (1 point per item):
+ * - If scoresOnAgree: definitely_agree or slightly_agree = 1, else 0
+ * - If not scoresOnAgree: definitely_disagree or slightly_disagree = 1, else 0
+ * Cutoff: Total score >= 32 indicates clinically significant autistic traits.
+ */
+export function scoreAQ50(testConfig, responses) {
+  let totalScore = 0;
+  const subscales = {
+    social_skill: { score: 0, count: 0, max: 10, name: 'Social Skill' },
+    attention_switching: { score: 0, count: 0, max: 10, name: 'Attention Switching' },
+    attention_to_detail: { score: 0, count: 0, max: 10, name: 'Attention to Detail' },
+    communication: { score: 0, count: 0, max: 10, name: 'Communication' },
+    imagination: { score: 0, count: 0, max: 10, name: 'Imagination' },
+  };
+  const itemScores = [];
+
+  testConfig.items.forEach((item) => {
+    const rawVal = responses[item.id];
+    let score = 0;
+
+    if (item.scoresOnAgree) {
+      if (rawVal === 'definitely_agree' || rawVal === 'slightly_agree') {
+        score = 1;
+      }
+    } else {
+      if (rawVal === 'definitely_disagree' || rawVal === 'slightly_disagree') {
+        score = 1;
+      }
+    }
+
+    totalScore += score;
+    if (subscales[item.subscale]) {
+      subscales[item.subscale].score += score;
+      subscales[item.subscale].count += 1;
+    }
+
+    itemScores.push({
+      id: item.id,
+      number: item.number,
+      subscale: item.subscale,
+      rawVal,
+      score,
+    });
+  });
+
+  const isPositive = totalScore >= (testConfig.thresholds?.clinicalCutoff || 32);
+  const interpretation = isPositive
+    ? testConfig.interpretations.elevated
+    : testConfig.interpretations.nonElevated;
+
+  return {
+    testId: testConfig.id,
+    name: testConfig.name,
+    condition: testConfig.condition,
+    totalScore,
+    maxScore: testConfig.thresholds?.maxScore || 50,
+    cutoff: testConfig.thresholds?.clinicalCutoff || 32,
+    isPositive,
+    subscales,
+    headline: interpretation.title,
+    summary: interpretation.summary,
+    recommendation: isPositive
+      ? 'A score of 32 or higher indicates significant autistic traits; 80% of adults with Asperger syndrome or autism score at or above this threshold.'
+      : 'Scores below 32 fall into the general neurotypical range.',
+    itemScores,
+  };
+}
+
+/**
+ * Score RBQ-2A (20 items, 2 subscales)
+ * Citation: Barrett, S. L., et al. (2015). Molecular Autism, 6, Article 58.
+ * Responses: 1 to 4 rating.
+ * Metric: Total sum (20-80) and Mean item score (total / 20).
+ * Cutoff: Mean score >= 1.75 indicates clinically elevated repetitive behaviors.
+ */
+export function scoreRBQ2A(testConfig, responses) {
+  let totalScore = 0;
+  const subscales = {
+    repetitive_motor_behaviors: { score: 0, count: 0, max: 32, name: 'Repetitive Motor Behaviors' },
+    insistence_on_sameness: { score: 0, count: 0, max: 48, name: 'Insistence on Sameness' },
+  };
+  const itemScores = [];
+
+  testConfig.items.forEach((item) => {
+    const rawVal = responses[item.id] !== undefined ? Number(responses[item.id]) : 1;
+    totalScore += rawVal;
+
+    if (subscales[item.subscale]) {
+      subscales[item.subscale].score += rawVal;
+      subscales[item.subscale].count += 1;
+    }
+
+    itemScores.push({
+      id: item.id,
+      number: item.number,
+      subscale: item.subscale,
+      value: rawVal,
+    });
+  });
+
+  const meanScore = Number((totalScore / Math.max(testConfig.items.length, 1)).toFixed(2));
+  const rmbMean = Number((subscales.repetitive_motor_behaviors.score / 8).toFixed(2));
+  const isMean = Number((subscales.insistence_on_sameness.score / 12).toFixed(2));
+
+  subscales.repetitive_motor_behaviors.mean = rmbMean;
+  subscales.insistence_on_sameness.mean = isMean;
+
+  const isPositive = meanScore >= (testConfig.thresholds?.clinicalMeanCutoff || 1.75);
+  const interpretation = isPositive
+    ? testConfig.interpretations.elevated
+    : testConfig.interpretations.nonElevated;
+
+  return {
+    testId: testConfig.id,
+    name: testConfig.name,
+    condition: testConfig.condition,
+    totalScore,
+    maxScore: testConfig.thresholds?.maxScore || 80,
+    meanScore,
+    meanCutoff: testConfig.thresholds?.clinicalMeanCutoff || 1.75,
+    isPositive,
+    subscales,
+    headline: interpretation.title,
+    summary: interpretation.summary,
+    recommendation: isPositive
+      ? 'A mean score >= 1.75 indicates elevated repetitive motor behaviors or insistence on sameness typical of autistic adults.'
+      : 'Repetitive behaviors and insistence on sameness scores are within typical adult ranges.',
+    itemScores,
+  };
+}
+
+/**
  * Universal dispatcher
  */
 export function scoreTest(testConfig, responses, followUpResponses = null) {
@@ -293,6 +507,15 @@ export function scoreTest(testConfig, responses, followUpResponses = null) {
   }
   if (testConfig.scoringStrategy === 'mchat_scoring') {
     return scoreMChat(testConfig, responses, followUpResponses);
+  }
+  if (testConfig.scoringStrategy === 'raads_r') {
+    return scoreRAADSR(testConfig, responses);
+  }
+  if (testConfig.scoringStrategy === 'aq50_binary') {
+    return scoreAQ50(testConfig, responses);
+  }
+  if (testConfig.scoringStrategy === 'rbq2a_likert') {
+    return scoreRBQ2A(testConfig, responses);
   }
   throw new Error(`Unsupported scoring strategy: ${testConfig.scoringStrategy}`);
 }

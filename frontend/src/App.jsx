@@ -6,6 +6,7 @@ import TaskStroop from './components/TaskStroop';
 import TaskDigitSpan from './components/TaskDigitSpan';
 import TaskVerbal from './components/TaskVerbal';
 import Dashboard from './components/Dashboard';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import AgeRouterModal from './features/screening/components/AgeRouterModal';
 import QuestionRenderer from './features/screening/components/QuestionRenderer';
@@ -288,8 +289,10 @@ export default function App() {
 
     setAnalyzingStatusText('Computing Cognitive Performance Index (CPI) & SHAP attributions...');
 
+    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
     try {
-      const res = await fetch('http://localhost:8000/api/v1/analyze', {
+      const res = await fetch(`${apiBaseUrl}/api/v1/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -328,6 +331,7 @@ export default function App() {
     setAnalysisResult(null);
     setCurrentStep('preflight');
   };
+
 
   return (
     <div className="app-container">
@@ -430,22 +434,36 @@ export default function App() {
         )}
 
         {/* Step 7: Behavioral Questionnaire Flow (Adult ASRS/AQ-10 or Toddler M-CHAT-R/F) */}
-        {currentStep === 'questionnaire' && activeTestConfig && activeItem && (
-          <QuestionRenderer
-            testConfig={activeTestConfig}
-            currentIndex={currentQuestionIndex}
-            totalItems={activeTestConfig.items.length}
-            item={activeItem}
-            currentValue={currentResponses[activeItem.id]}
-            onSelectOption={handleSelectOption}
-            onPrev={handlePrevQuestion}
-            onNext={handleNextQuestion}
-            isLastQuestion={
-              currentQuestionIndex + 1 === activeTestConfig.items.length &&
-              currentTestIndex + 1 === selectedFlow.testIds.length
-            }
-            onCancel={handleSkipScreening}
-          />
+        {currentStep === 'questionnaire' && (
+          activeTestConfig ? (
+            <QuestionRenderer
+              testConfig={activeTestConfig}
+              currentIndex={currentQuestionIndex}
+              totalItems={activeTestConfig.items?.length || 0}
+              item={activeItem || activeTestConfig.items?.[0] || null}
+              currentValue={activeItem ? currentResponses[activeItem.id] : undefined}
+              onSelectOption={handleSelectOption}
+              onPrev={handlePrevQuestion}
+              onNext={handleNextQuestion}
+              isLastQuestion={
+                currentQuestionIndex + 1 === (activeTestConfig.items?.length || 0) &&
+                currentTestIndex + 1 === (selectedFlow?.testIds?.length || 1)
+              }
+              onCancel={handleSkipScreening}
+            />
+          ) : (
+            <div className="glass-panel" style={{ padding: '60px 32px', textAlign: 'center', maxWidth: '600px', margin: '40px auto' }}>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 700, marginBottom: '12px' }}>
+                Questionnaire Ready
+              </h3>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
+                Ready to synthesize your multi-modal evaluation results.
+              </p>
+              <button onClick={handleSkipScreening} className="btn-primary" style={{ padding: '12px 24px' }}>
+                View Final Diagnostic Profile
+              </button>
+            </div>
+          )
         )}
 
         {/* Step 7b: M-CHAT-R/F Medium-Risk Follow-Up Interview */}
@@ -473,11 +491,13 @@ export default function App() {
 
         {/* Step 9: Integrated Final Dashboard Profile */}
         {currentStep === 'dashboard' && (
-          <Dashboard
-            analysisResult={analysisResult}
-            rawPayload={sessionDataRef.current}
-            onRetake={handleReset}
-          />
+          <ErrorBoundary onReset={handleReset}>
+            <Dashboard
+              analysisResult={analysisResult}
+              rawPayload={sessionDataRef.current}
+              onRetake={handleReset}
+            />
+          </ErrorBoundary>
         )}
       </main>
 
@@ -495,26 +515,32 @@ export default function App() {
  * Local deterministic fallback generator matching FastAPI CPI formulation
  */
 function generateLocalAnalysisFallback(req) {
-  const pvt = req.tasks.pvt || { mean_rt: 242, inv_rt: 4.13, lapses: 0 };
-  const stroop = req.tasks.stroop || { interference_cost: 110, accuracy: 0.95 };
-  const nback = req.tasks.nback || { dprime: 2.3, span: 7, accuracy: 0.9 };
-  const oculo = req.biomarkers.oculomotor || { gaze_on_screen: 0.94, blink_rate: 18.2, fixation_dispersion: 41.5, head_yaw_var: 3.2 };
+  const pvt = req?.tasks?.pvt || {};
+  const stroop = req?.tasks?.stroop || {};
+  const nback = req?.tasks?.nback || {};
+  const oculo = req?.biomarkers?.oculomotor || {};
 
-  // Normative Z-scores
-  const zPvt = (3.45 - 1000 / pvt.mean_rt) / 0.55 * -1;
-  const zStroop = (stroop.interference_cost - 120) / 38 * -1;
-  const zNback = ((nback.dprime || 2.2) - 2.2) / 0.65;
-  const zGaze = (oculo.gaze_on_screen - 0.91) / 0.07;
+  const meanRt = Number(pvt.mean_rt) > 50 ? Number(pvt.mean_rt) : 242;
+  const invRt = Number(pvt.inv_rt) > 0 ? Number(pvt.inv_rt) : Number((1000 / meanRt).toFixed(2));
+  const stroopCost = typeof stroop.interference_cost === 'number' ? stroop.interference_cost : 110;
+  const dprime = typeof nback.dprime === 'number' ? nback.dprime : 2.3;
+  const gaze = typeof oculo.gaze_on_screen === 'number' ? oculo.gaze_on_screen : 0.94;
+
+  // Normative Z-scores with safety limits
+  const zPvt = Math.min(Math.max((3.45 - 1000 / meanRt) / 0.55 * -1, -3), 3);
+  const zStroop = Math.min(Math.max((stroopCost - 120) / 38 * -1, -3), 3);
+  const zNback = Math.min(Math.max((dprime - 2.2) / 0.65, -3), 3);
+  const zGaze = Math.min(Math.max((gaze - 0.91) / 0.07, -3), 3);
 
   const execScore = Math.min(Math.max(75 + 12 * (0.6 * zNback + 0.4 * zStroop), 30), 98);
   const attenScore = Math.min(Math.max(75 + 12 * (0.6 * zPvt + 0.4 * zGaze), 30), 98);
   const speedScore = Math.min(Math.max(75 + 12 * zPvt, 30), 98);
   const stabScore = Math.min(Math.max(75 + 12 * (0.5 * zGaze + 0.5 * 0.2), 30), 98);
 
-  const cpi = Math.round(0.3 * execScore + 0.3 * attenScore + 0.25 * speedScore + 0.15 * stabScore);
+  const cpi = Math.round(0.3 * execScore + 0.3 * attenScore + 0.25 * speedScore + 0.15 * stabScore) || 75;
 
   return {
-    session_id: req.session_id,
+    session_id: req?.session_id || `sess_${Date.now().toString(36)}`,
     cpi_score: cpi,
     percentile_rank: Math.min(Math.max(Math.round(cpi * 0.95), 10), 98),
     confidence_interval: [cpi - 2.5, cpi + 2.5],

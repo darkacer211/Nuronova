@@ -1,6 +1,8 @@
-import React, { useEffect } from 'react';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ArrowLeft, ArrowRight, ShieldAlert, Upload } from 'lucide-react';
 import ScreeningDisclaimer from './ScreeningDisclaimer';
+import { isInstrumentRunnable, getInstrumentLicensing } from '../engine/textLoader';
+import LicensingGateModal from './LicensingGateModal';
 
 export default function QuestionRenderer({
   testConfig,
@@ -14,11 +16,18 @@ export default function QuestionRenderer({
   isLastQuestion,
   onCancel,
 }) {
-  const progressPct = Math.round(((currentIndex + 1) / totalItems) * 100);
+  const [isLicensingModalOpen, setIsLicensingModalOpen] = useState(false);
+  const isRunnable = isInstrumentRunnable(testConfig?.id);
+  const licenseInfo = getInstrumentLicensing(testConfig?.id);
+
+  const progressPct = Math.round(((currentIndex + 1) / (totalItems || 1)) * 100);
 
   // Keyboard shortcut support (1-7 for options, Enter for next, ArrowLeft for prev)
   useEffect(() => {
+    if (!isRunnable) return;
+
     const handleKeyDown = (e) => {
+      if (!testConfig?.scale) return;
       // Numbers 1 to scale.length
       const num = parseInt(e.key, 10);
       if (!isNaN(num) && num >= 1 && num <= testConfig.scale.length) {
@@ -35,7 +44,90 @@ export default function QuestionRenderer({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, currentValue, testConfig.scale, onSelectOption, onPrev, onNext]);
+  }, [currentIndex, currentValue, testConfig?.scale, onSelectOption, onPrev, onNext, isRunnable]);
+
+  // REFUSE EXECUTION IF TEXT IS NOT LOADED
+  if (!isRunnable || !item) {
+    return (
+      <div style={{ maxWidth: '780px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <LicensingGateModal
+          isOpen={isLicensingModalOpen}
+          instrumentId={testConfig?.id}
+          instrumentName={testConfig?.name}
+          onClose={() => setIsLicensingModalOpen(false)}
+          onSuccessLoaded={() => window.location.reload()}
+        />
+
+        <div className="glass-panel" style={{ padding: '36px 32px', textAlign: 'center' }}>
+          <div
+            style={{
+              width: '54px',
+              height: '54px',
+              borderRadius: '50%',
+              background: 'rgba(245, 158, 11, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px auto',
+            }}
+          >
+            <ShieldAlert size={28} color="#f59e0b" />
+          </div>
+
+          <span className="badge-pill badge-amber" style={{ marginBottom: '12px', display: 'inline-block' }}>
+            Coming Soon • Licensing Pending
+          </span>
+
+          <h3 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '8px' }}>
+            {testConfig?.name || 'Screening Instrument'}
+          </h3>
+
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', maxWidth: '600px', margin: '0 auto 20px auto', lineHeight: 1.6 }}>
+            Official question text for this clinical instrument is held under copyright ({licenseInfo.requiredCopyright}). To ensure legal compliance, the UI refuses to run this screener until authorized text is supplied.
+          </p>
+
+          <div
+            style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '16px',
+              maxWidth: '560px',
+              margin: '0 auto 24px auto',
+              textAlign: 'left',
+              fontSize: '0.82rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            <div>
+              <strong style={{ color: 'var(--text-dim)' }}>Publisher / Rights: </strong>
+              <span style={{ color: '#e2e8f0' }}>{licenseInfo.permissionContact}</span>
+            </div>
+            <div>
+              <strong style={{ color: 'var(--text-dim)' }}>Citation: </strong>
+              <span style={{ color: '#cbd5e1' }}>{licenseInfo.citation}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+            <button onClick={onCancel} className="btn-secondary" style={{ padding: '10px 20px', fontSize: '0.88rem' }}>
+              Back to Screeners
+            </button>
+            <button
+              onClick={() => setIsLicensingModalOpen(true)}
+              className="btn-primary"
+              style={{ padding: '10px 20px', fontSize: '0.88rem' }}
+            >
+              <Upload size={16} />
+              <span>Supply Authorized Text</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>

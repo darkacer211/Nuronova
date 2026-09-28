@@ -120,14 +120,38 @@ export function useAcousticAnalyzer() {
     }
   }, []);
 
-  const stopAcousticCapture = useCallback(() => {
+  const finalAudioBlobRef = useRef(null);
+
+  const stopAcousticCapture = useCallback(async () => {
     if (animFrameIdRef.current) {
       cancelAnimationFrame(animFrameIdRef.current);
       animFrameIdRef.current = null;
     }
 
+    let blob = null;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+      blob = await new Promise((resolve) => {
+        const recorder = mediaRecorderRef.current;
+        recorder.onstop = () => {
+          const mimeType = recorder.mimeType || (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg');
+          const finalBlob = new Blob(audioChunksRef.current, { type: mimeType });
+          finalAudioBlobRef.current = finalBlob;
+          resolve(finalBlob);
+        };
+        try {
+          recorder.requestData();
+          recorder.stop();
+        } catch (e) {
+          const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+          const fallbackBlob = new Blob(audioChunksRef.current, { type: mimeType });
+          finalAudioBlobRef.current = fallbackBlob;
+          resolve(fallbackBlob);
+        }
+      });
+    } else if (audioChunksRef.current.length > 0) {
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+      blob = new Blob(audioChunksRef.current, { type: mimeType });
+      finalAudioBlobRef.current = blob;
     }
 
     if (streamRef.current) {
@@ -141,9 +165,11 @@ export function useAcousticAnalyzer() {
 
     setIsRecording(false);
     setVolumeLevel(0);
+    return blob || finalAudioBlobRef.current;
   }, []);
 
   const getAudioBlob = useCallback(() => {
+    if (finalAudioBlobRef.current) return finalAudioBlobRef.current;
     if (audioChunksRef.current.length === 0) return null;
     const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
     return new Blob(audioChunksRef.current, { type: mimeType });

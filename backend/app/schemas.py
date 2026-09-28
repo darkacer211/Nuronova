@@ -107,3 +107,30 @@ class TranscribeResponse(BaseModel):
     speech_rate_wpm: float
     hesitation_count: int
     duration_seconds: float
+
+class ConsentFlags(BaseModel):
+    data_storage_opt_in: bool = Field(False, description="Explicit opt-in to persist session data")
+    parental_consent_verified: bool = Field(False, description="Mandatory for minors under 13 under COPPA")
+    research_share_opt_in: bool = Field(False, description="Optional consent to share de-identified research aggregates")
+
+class CreatePatientRequest(BaseModel):
+    pseudonym_id: str = Field(..., description="De-identified participant / patient identifier")
+    is_minor: bool = Field(False, description="Flag indicating if participant is under 18 (or under 13 for COPPA)")
+    parental_consent_verified: bool = Field(False, description="Verifiable consent from parent or legal guardian")
+    notes: Optional[str] = Field(None, description="Optional clinical notes (encrypted at rest)")
+
+class PatientResponse(BaseModel):
+    patient_id: str
+    clinician_id: str
+    is_minor: bool
+    parental_consent_verified: bool
+    created_at: float
+
+class AuditLogItem(BaseModel):
+    timestamp: float
+    iso_time: str
+    action: str
+    clinician_id: str
+    resource_type: str
+    resource_id: str
+    details: Dict[str, Any]
