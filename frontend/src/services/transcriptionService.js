@@ -30,10 +30,9 @@ export function detectKeyProvider(key) {
   if (!key) return null;
   const trimmed = key.trim();
   if (trimmed.startsWith('gsk_')) return 'groq';
-  if (trimmed.startsWith('AIza')) return 'gemini';
   if (trimmed.startsWith('sk-')) return 'openai';
-  // Default to Groq if key length matches typical token
-  return 'groq';
+  if (trimmed.startsWith('AIza') || trimmed.startsWith('AQ.') || trimmed.includes('.')) return 'gemini';
+  return 'gemini';
 }
 
 /**
@@ -113,43 +112,54 @@ async function transcribeWithGemini(audioBlob, apiKey) {
   const base64Audio = btoa(binary);
   const mimeType = audioBlob.type ? audioBlob.type.split(';')[0] : 'audio/webm';
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
+  const models = ['gemini-3.8-flash', 'gemini-3.5-transcribe', 'gemini-flash-latest'];
+  let lastError = null;
+
+  for (const model of models) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
             {
-              text: 'You are an accurate clinical speech transcription system. The participant was asked to name as many animals as possible in 25 seconds for a verbal fluency assessment. Transcribe all spoken words and animal names accurately. Output only the plain transcribed words.',
-            },
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: base64Audio,
-              },
+              parts: [
+                {
+                  text: 'You are an accurate clinical speech transcription system. The participant was asked to name as many animals as possible in 25 seconds for a verbal fluency assessment. Transcribe all spoken words and animal names accurately. Output only the plain transcribed words.',
+                },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64Audio,
+                  },
+                },
+              ],
             },
           ],
-        },
-      ],
-    }),
-  });
+        }),
+      });
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Gemini API error (${res.status}): ${errorText}`);
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return {
+          transcript: text.trim(),
+          duration: 25,
+          provider: `Google Gemini (${model})`,
+        };
+      } else {
+        const errorText = await res.text();
+        lastError = new Error(`Gemini API error (${res.status} on ${model}): ${errorText}`);
+      }
+    } catch (err) {
+      lastError = err;
+    }
   }
 
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  return {
-    transcript: text.trim(),
-    duration: 25,
-    provider: 'Google Gemini Flash',
-  };
+  throw lastError || new Error('All Gemini transcription models failed.');
 }
 
 /**

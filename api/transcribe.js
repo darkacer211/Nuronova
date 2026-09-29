@@ -76,30 +76,37 @@ export default async function handler(req, res) {
     // 2. Fallback to Gemini
     if (geminiApiKey) {
       const base64Audio = buffer.toString('base64');
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: 'Transcribe all animal names and spoken words from this verbal fluency test audio accurately. Return only the plain transcribed words.' },
-                { inline_data: { mime_type: 'audio/webm', data: base64Audio } }
-              ]
-            }]
-          })
-        }
-      );
+      const models = ['gemini-3.8-flash', 'gemini-3.5-transcribe', 'gemini-flash-latest'];
+      for (const model of models) {
+        try {
+          const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [
+                    { text: 'Transcribe all animal names and spoken words from this verbal fluency test audio accurately. Return only the plain transcribed words.' },
+                    { inline_data: { mime_type: 'audio/webm', data: base64Audio } }
+                  ]
+                }]
+              })
+            }
+          );
 
-      if (geminiRes.ok) {
-        const json = await geminiRes.json();
-        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        return res.status(200).json({
-          transcript: text.trim(),
-          duration_seconds: 25,
-          provider: 'Google Gemini',
-        });
+          if (geminiRes.ok) {
+            const json = await geminiRes.json();
+            const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            return res.status(200).json({
+              transcript: text.trim(),
+              duration_seconds: 25,
+              provider: `Google Gemini (${model})`,
+            });
+          }
+        } catch (e) {
+          console.warn(`Model ${model} failed, trying next:`, e);
+        }
       }
     }
 
