@@ -35,6 +35,13 @@ export function useAcousticAnalyzer() {
 
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioCtx();
+      if (audioCtx.state === 'suspended') {
+        try {
+          await audioCtx.resume();
+        } catch (e) {
+          console.warn('AudioContext resume error:', e);
+        }
+      }
       audioContextRef.current = audioCtx;
 
       const analyser = audioCtx.createAnalyser();
@@ -44,20 +51,36 @@ export function useAcousticAnalyzer() {
       const source = audioCtx.createMediaStreamSource(stream);
       source.connect(analyser);
 
-      // Setup MediaRecorder for verbal task transcription
+      // Setup MediaRecorder safely (cross-browser: Chrome, Safari, Firefox, Edge, iOS)
       audioChunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg',
-      });
-      mediaRecorderRef.current = mediaRecorder;
+      try {
+        if (typeof MediaRecorder !== 'undefined') {
+          let selectedMime = '';
+          if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            selectedMime = 'audio/webm;codecs=opus';
+          } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+            selectedMime = 'audio/webm';
+          } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            selectedMime = 'audio/mp4';
+          } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+            selectedMime = 'audio/ogg';
+          }
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+          const options = selectedMime ? { mimeType: selectedMime } : undefined;
+          const mediaRecorder = options ? new MediaRecorder(stream, options) : new MediaRecorder(stream);
+          mediaRecorderRef.current = mediaRecorder;
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              audioChunksRef.current.push(event.data);
+            }
+          };
+
+          mediaRecorder.start(250); // 250ms chunks
         }
-      };
-
-      mediaRecorder.start(250); // 250ms chunks
+      } catch (recErr) {
+        console.warn('Optional MediaRecorder setup skipped or unsupported:', recErr);
+      }
 
       acousticStatsRef.current = {
         totalSamples: 0,

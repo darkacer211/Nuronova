@@ -2,22 +2,144 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const DURATION_SECONDS = 25;
 
-const KNOWN_ANIMALS = new Set([
-  'dog', 'cat', 'puppy', 'kitten', 'hamster', 'rabbit', 'horse', 'cow', 'pig', 'sheep', 'goat', 'chicken', 'duck',
-  'lion', 'tiger', 'cheetah', 'leopard', 'elephant', 'giraffe', 'zebra', 'hippo', 'rhino', 'monkey', 'gorilla',
-  'chimpanzee', 'bear', 'panda', 'wolf', 'fox', 'deer', 'kangaroo', 'koala', 'whale', 'dolphin', 'shark', 'seal',
-  'eagle', 'owl', 'parrot', 'penguin', 'snake', 'lizard', 'frog', 'turtle', 'crocodile', 'alligator', 'butterfly',
-  'bee', 'spider', 'octopus', 'crab', 'lobster', 'fish', 'mouse', 'rat', 'bat', 'otter', 'beaver', 'squirrel'
-]);
+// Comprehensive animal dictionary covering pets, farm animals, wild mammals,
+// birds, marine life, reptiles, amphibians, and insects
+const ANIMAL_LEXICON = [
+  // Domestic & Pets
+  'dog', 'dogs', 'puppy', 'puppies', 'hound', 'canine',
+  'cat', 'cats', 'kitten', 'kittens', 'kitty', 'feline',
+  'cow', 'cows', 'bull', 'bulls', 'calf', 'calves', 'ox', 'oxen', 'cattle',
+  'horse', 'horses', 'pony', 'ponies', 'stallion', 'mare', 'foal', 'colt',
+  'donkey', 'donkeys', 'mule', 'mules',
+  'pig', 'pigs', 'piglet', 'piglets', 'hog', 'hogs', 'boar', 'swine',
+  'sheep', 'lamb', 'lambs', 'ram', 'rams', 'ewe', 'ewes',
+  'goat', 'goats', 'kid', 'kids',
+  'chicken', 'chickens', 'hen', 'hens', 'rooster', 'roosters', 'chick', 'chicks',
+  'duck', 'ducks', 'duckling', 'ducklings',
+  'goose', 'geese', 'gosling', 'goslings',
+  'turkey', 'turkeys',
+  'rabbit', 'rabbits', 'bunny', 'bunnies', 'hare', 'hares',
+  'hamster', 'hamsters', 'guinea pig', 'guinea pigs', 'gerbil', 'gerbils', 'ferret', 'ferrets',
+  'mouse', 'mice', 'rat', 'rats',
+
+  // Wild Mammals & Safari
+  'lion', 'lions', 'lioness', 'tiger', 'tigers', 'cub', 'cubs',
+  'cheetah', 'cheetahs', 'leopard', 'leopards', 'jaguar', 'jaguars', 'panther', 'panthers',
+  'puma', 'pumas', 'cougar', 'cougars', 'lynx', 'bobcat', 'bobcats',
+  'elephant', 'elephants', 'giraffe', 'giraffes',
+  'zebra', 'zebras', 'hippopotamus', 'hippopotamuses', 'hippo', 'hippos',
+  'rhinoceros', 'rhinoceroses', 'rhino', 'rhinos',
+  'monkey', 'monkeys', 'ape', 'apes', 'chimpanzee', 'chimpanzees', 'chimp', 'chimps',
+  'gorilla', 'gorillas', 'orangutan', 'orangutans', 'baboon', 'baboons', 'lemur', 'lemurs',
+  'bear', 'bears', 'polar bear', 'grizzly', 'panda', 'pandas',
+  'wolf', 'wolves', 'coyote', 'coyotes', 'jackal', 'jackals', 'dingo', 'dingoes',
+  'fox', 'foxes',
+  'deer', 'fawn', 'stag', 'doe', 'elk', 'elks', 'moose', 'reindeer', 'caribou', 'antelope', 'gazelle',
+  'camel', 'camels', 'llama', 'llamas', 'alpaca', 'alpacas', 'yak', 'yaks',
+  'bison', 'buffalo', 'buffaloes',
+  'kangaroo', 'kangaroos', 'koala', 'koalas', 'wallaby', 'wallabies', 'wombat', 'platypus',
+  'sloth', 'sloths', 'anteater', 'anteaters', 'armadillo', 'armadillos',
+  'raccoon', 'raccoons', 'skunk', 'skunks', 'badger', 'badgers',
+  'otter', 'otters', 'beaver', 'beavers', 'squirrel', 'squirrels', 'chipmunk', 'chipmunks',
+  'hedgehog', 'hedgehogs', 'porcupine', 'porcupines', 'mole', 'moles',
+  'bat', 'bats', 'possum', 'possums', 'opossum', 'opossums', 'hyena', 'hyenas',
+  'meerkat', 'meerkats',
+
+  // Marine & Aquatic
+  'whale', 'whales', 'blue whale', 'killer whale', 'orca', 'orcas', 'humpback', 'narwhal',
+  'dolphin', 'dolphins', 'porpoise', 'porpoises',
+  'shark', 'sharks', 'seal', 'seals', 'sea lion', 'sea lions', 'walrus', 'walruses',
+  'manatee', 'manatees',
+  'octopus', 'octopuses', 'octopi', 'squid', 'squids',
+  'crab', 'crabs', 'lobster', 'lobsters', 'shrimp', 'prawn', 'prawns',
+  'jellyfish', 'starfish', 'seahorse', 'seahorses', 'clam', 'clams', 'oyster', 'oysters',
+  'fish', 'fishes', 'salmon', 'trout', 'tuna', 'goldfish', 'eel', 'eels', 'stingray', 'ray',
+
+  // Birds
+  'bird', 'birds', 'sparrow', 'sparrows', 'eagle', 'eagles', 'hawk', 'hawks', 'falcon', 'falcons',
+  'owl', 'owls', 'parrot', 'parrots', 'penguin', 'penguins', 'swan', 'swans',
+  'peacock', 'peacocks', 'flamingo', 'flamingos', 'pigeon', 'pigeons', 'dove', 'doves',
+  'crow', 'crows', 'raven', 'ravens', 'seagull', 'seagulls', 'gull', 'gulls',
+  'canary', 'canaries', 'woodpecker', 'woodpeckers', 'robin', 'robins', 'bluejay', 'bluejays',
+  'vulture', 'vultures', 'pelican', 'pelicans', 'stork', 'storks', 'heron', 'herons',
+  'ostrich', 'ostriches', 'emu', 'emus', 'kiwi', 'kiwis', 'hummingbird', 'hummingbirds',
+
+  // Reptiles & Amphibians
+  'snake', 'snakes', 'python', 'pythons', 'cobra', 'cobras', 'viper', 'vipers',
+  'lizard', 'lizards', 'gecko', 'geckos', 'chameleon', 'chameleons', 'iguana', 'iguanas',
+  'turtle', 'turtles', 'tortoise', 'tortoises',
+  'crocodile', 'crocodiles', 'alligator', 'alligators', 'croc', 'crocs', 'gator', 'gators',
+  'frog', 'frogs', 'toad', 'toads', 'tadpole', 'newt', 'salamander', 'salamanders',
+
+  // Insects & Arthropods
+  'butterfly', 'butterflies', 'moth', 'moths', 'caterpillar', 'caterpillars',
+  'bee', 'bees', 'honeybee', 'wasp', 'wasps', 'hornet', 'hornets', 'bumblebee',
+  'ant', 'ants', 'spider', 'spiders', 'tarantula', 'scorpion', 'scorpions',
+  'beetle', 'beetles', 'ladybug', 'ladybugs',
+  'grasshopper', 'grasshoppers', 'cricket', 'crickets', 'dragonfly', 'dragonflies',
+  'fly', 'flies', 'mosquito', 'mosquitoes', 'worm', 'worms', 'snail', 'snails', 'slug', 'slugs'
+];
+
+const KNOWN_ANIMALS_SET = new Set(ANIMAL_LEXICON.map((w) => w.toLowerCase()));
+
+// Irregular plurals and aliases mapping to base form
+const CANONICAL_MAP = {
+  dogs: 'dog', puppies: 'puppy', pups: 'pup',
+  cats: 'cat', kittens: 'kitten', kitties: 'kitten',
+  cows: 'cow', bulls: 'bull', calves: 'calf', oxen: 'ox',
+  horses: 'horse', ponies: 'pony',
+  donkeys: 'donkey', mules: 'mule',
+  pigs: 'pig', piglets: 'piglet', hogs: 'hog',
+  lambs: 'lamb', rams: 'ram',
+  goats: 'goat', kids: 'kid',
+  chickens: 'chicken', hens: 'hen', roosters: 'rooster', chicks: 'chick',
+  ducks: 'duck', ducklings: 'duckling',
+  geese: 'goose', goslings: 'gosling',
+  turkeys: 'turkey',
+  rabbits: 'rabbit', bunnies: 'bunny', hares: 'hare',
+  hamsters: 'hamster', gerbils: 'gerbil', ferrets: 'ferret',
+  mice: 'mouse', rats: 'rat',
+  lions: 'lion', tigers: 'tiger', cubs: 'cub',
+  cheetahs: 'cheetah', leopards: 'leopard', jaguars: 'jaguar', panthers: 'panther',
+  elephants: 'elephant', giraffes: 'giraffe',
+  zebras: 'zebra', hippopotamuses: 'hippo', hippos: 'hippo', hippopotamus: 'hippo',
+  rhinoceroses: 'rhino', rhinos: 'rhino', rhinoceros: 'rhino',
+  monkeys: 'monkey', apes: 'ape', chimpanzees: 'chimpanzee', chimps: 'chimpanzee',
+  gorillas: 'gorilla', baboons: 'baboon', lemurs: 'lemur',
+  bears: 'bear', pandas: 'panda',
+  wolves: 'wolf', coyotes: 'coyote', foxes: 'fox',
+  camels: 'camel', llamas: 'llama',
+  kangaroos: 'kangaroo', koalas: 'koala',
+  whales: 'whale', dolphins: 'dolphin', sharks: 'shark', seals: 'seal', walruses: 'walrus',
+  octopuses: 'octopus', octopi: 'octopus', squids: 'squid',
+  crabs: 'crab', lobsters: 'lobster',
+  sparrows: 'sparrow', eagles: 'eagle', hawks: 'hawk', falcons: 'falcon',
+  owls: 'owl', parrots: 'parrot', penguins: 'penguin', swans: 'swan',
+  pigeons: 'pigeon', doves: 'dove', crows: 'crow', ravens: 'raven',
+  seagulls: 'seagull', gulls: 'seagull',
+  snakes: 'snake', pythons: 'python', lizards: 'lizard',
+  turtles: 'turtle', tortoises: 'tortoise',
+  crocodiles: 'crocodile', alligators: 'alligator',
+  frogs: 'frog', toads: 'toad',
+  butterflies: 'butterfly', moths: 'moth', bees: 'bee', ants: 'ant', spiders: 'spider'
+};
 
 function normalizeAnimalWord(raw) {
   if (!raw) return null;
-  const word = raw.toLowerCase().trim().replace(/[^a-z]/g, '');
+  const word = raw.toLowerCase().trim().replace(/[^a-z\s-]/g, '');
   if (!word) return null;
-  if (KNOWN_ANIMALS.has(word)) return word;
-  if (word.endsWith('s') && KNOWN_ANIMALS.has(word.slice(0, -1))) {
+
+  if (CANONICAL_MAP[word]) return CANONICAL_MAP[word];
+  if (KNOWN_ANIMALS_SET.has(word)) return word;
+
+  // Regular plural fallback (e.g. "elephants" -> "elephant")
+  if (word.endsWith('s') && KNOWN_ANIMALS_SET.has(word.slice(0, -1))) {
     return word.slice(0, -1);
   }
+  if (word.endsWith('es') && KNOWN_ANIMALS_SET.has(word.slice(0, -2))) {
+    return word.slice(0, -2);
+  }
+
   return null;
 }
 
@@ -26,19 +148,53 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
   const [secondsRemaining, setSecondsRemaining] = useState(DURATION_SECONDS);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [recognizedWords, setRecognizedWords] = useState([]);
-  const [newWordInput, setNewWordInput] = useState('');
+  const [quickInput, setQuickInput] = useState('');
+  const [speechStatus, setSpeechStatus] = useState('idle'); // idle, active, unavailable, denied
 
   const timerRef = useRef(null);
   const speechRecognitionRef = useRef(null);
+  const isRecordingActiveRef = useRef(false);
 
-  const startTask = async () => {
+  // Extract recognized animals from speech transcript
+  const extractAnimalsFromText = (text) => {
+    if (!text) return;
+    const clean = text.toLowerCase().replace(/[^a-z\s-]/g, ' ');
+    const tokens = clean.split(/\s+/).filter(Boolean);
+
+    // Check two-word animals first (e.g., "polar bear", "guinea pig", "sea lion", "killer whale")
+    for (let i = 0; i < tokens.length - 1; i++) {
+      const twoWords = `${tokens[i]} ${tokens[i + 1]}`;
+      const norm = normalizeAnimalWord(twoWords);
+      if (norm) {
+        setRecognizedWords((prev) => (prev.includes(norm) ? prev : [...prev, norm]));
+      }
+    }
+
+    // Check single tokens
+    tokens.forEach((t) => {
+      const norm = normalizeAnimalWord(t);
+      if (norm) {
+        setRecognizedWords((prev) => (prev.includes(norm) ? prev : [...prev, norm]));
+      }
+    });
+  };
+
+  const startTask = () => {
     setPhase('recording');
     setSecondsRemaining(DURATION_SECONDS);
     setLiveTranscript('');
     setRecognizedWords([]);
+    setQuickInput('');
+    isRecordingActiveRef.current = true;
 
-    await acousticAnalyzer.startAcousticCapture();
+    // Start Web Audio API capture for phonation energy & pause tracking
+    if (acousticAnalyzer?.startAcousticCapture) {
+      acousticAnalyzer.startAcousticCapture().catch((err) => {
+        console.warn('Microphone capture initiation notice:', err);
+      });
+    }
 
+    // Initialize Web Speech API SYNCHRONOUSLY within the user click gesture
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRec) {
       try {
@@ -46,34 +202,56 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
+        recognition.maxAlternatives = 3;
 
         recognition.onresult = (event) => {
-          let interim = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              interim += transcript + ' ';
-              const words = transcript.split(/\s+/);
-              words.forEach((w) => {
-                const norm = normalizeAnimalWord(w);
-                if (norm) {
-                  setRecognizedWords((prev) => (prev.includes(norm) ? prev : [...prev, norm]));
+          let accumulated = '';
+          for (let i = 0; i < event.results.length; ++i) {
+            accumulated += event.results[i][0].transcript + ' ';
+          }
+          setLiveTranscript(accumulated.trim());
+          extractAnimalsFromText(accumulated);
+        };
+
+        recognition.onerror = (event) => {
+          console.warn('SpeechRecognition event code:', event.error);
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            setSpeechStatus('denied');
+          } else if (event.error === 'network') {
+            setSpeechStatus('unavailable');
+          }
+          // Note: 'no-speech' is non-fatal and will automatically restart via onend
+        };
+
+        recognition.onend = () => {
+          // Seamlessly auto-restart if user paused speaking and recording is still active
+          if (isRecordingActiveRef.current) {
+            try {
+              recognition.start();
+            } catch (e) {
+              setTimeout(() => {
+                if (isRecordingActiveRef.current) {
+                  try {
+                    recognition.start();
+                  } catch {}
                 }
-              });
-            } else {
-              interim += transcript;
+              }, 150);
             }
           }
-          setLiveTranscript(interim);
         };
 
         recognition.start();
         speechRecognitionRef.current = recognition;
+        setSpeechStatus('active');
       } catch (err) {
-        console.warn('Speech recognition start failed:', err);
+        console.warn('Speech recognition synchronous start fallback:', err);
+        setSpeechStatus('unavailable');
       }
+    } else {
+      setSpeechStatus('unavailable');
     }
 
+    // Countdown Timer
     timerRef.current = setInterval(() => {
       setSecondsRemaining((prev) => {
         if (prev <= 1) {
@@ -87,35 +265,41 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
   };
 
   const stopRecording = () => {
+    isRecordingActiveRef.current = false;
     if (timerRef.current) clearInterval(timerRef.current);
+
     if (speechRecognitionRef.current) {
       try {
         speechRecognitionRef.current.stop();
       } catch {}
     }
-    acousticAnalyzer.stopAcousticCapture();
+
+    if (acousticAnalyzer?.stopAcousticCapture) {
+      acousticAnalyzer.stopAcousticCapture();
+    }
     setPhase('review');
   };
 
-  const handleAddWord = () => {
-    const norm = normalizeAnimalWord(newWordInput);
-    if (norm && !recognizedWords.includes(norm)) {
-      setRecognizedWords([...recognizedWords, norm]);
-      setNewWordInput('');
-    } else if (newWordInput.trim()) {
-      setRecognizedWords([...recognizedWords, newWordInput.trim().toLowerCase()]);
-      setNewWordInput('');
+  const handleAddQuickWord = () => {
+    if (!quickInput.trim()) return;
+    const cleanWord = quickInput.trim().toLowerCase();
+    const norm = normalizeAnimalWord(cleanWord) || cleanWord;
+
+    if (!recognizedWords.includes(norm)) {
+      setRecognizedWords((prev) => [...prev, norm]);
     }
+    setQuickInput('');
   };
 
   const handleRemoveWord = (word) => {
-    setRecognizedWords(recognizedWords.filter((w) => w !== word));
+    setRecognizedWords((prev) => prev.filter((w) => w !== word));
   };
 
   const handleConfirmAndProceed = () => {
     const wordsCount = recognizedWords.length;
     const speechRate = Math.round((wordsCount / (DURATION_SECONDS / 60)));
-    const pauseRatio = 0.16;
+    const acousticSummary = acousticAnalyzer?.getAcousticSummary ? acousticAnalyzer.getAcousticSummary() : {};
+    const pauseRatio = acousticSummary?.pause_ratio ?? 0.16;
 
     onComplete({
       words_count: wordsCount,
@@ -123,12 +307,13 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
       pause_ratio: pauseRatio,
       matched_items: recognizedWords,
       category_hits: recognizedWords,
-      transcript: liveTranscript || recognizedWords.join(' '),
+      transcript: liveTranscript || recognizedWords.join(', '),
     });
   };
 
   useEffect(() => {
     return () => {
+      isRecordingActiveRef.current = false;
       if (timerRef.current) clearInterval(timerRef.current);
       if (speechRecognitionRef.current) {
         try {
@@ -137,6 +322,12 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
       }
     };
   }, []);
+
+  // Compute live speech rate for telemetry cards
+  const elapsed = Math.max(DURATION_SECONDS - secondsRemaining, 1);
+  const liveWpm = Math.round((recognizedWords.length / (elapsed / 60)));
+  const acousticSummary = acousticAnalyzer?.getAcousticSummary ? acousticAnalyzer.getAcousticSummary() : {};
+  const livePauseRatio = Math.round((acousticSummary?.pause_ratio ?? 0.16) * 100);
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -171,15 +362,15 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
               <div className="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center text-primary mb-4 shadow-sm">
                 <span className="material-symbols-outlined text-[32px]">graphic_eq</span>
               </div>
-              <h1 className="font-display text-[36px] font-bold text-on-surface mb-2 tracking-tight">
+              <h1 className="font-display text-[34px] font-bold text-on-surface mb-2 tracking-tight">
                 Phonation & Verbal Fluency
               </h1>
               <p className="font-body-lg text-[15px] text-on-surface-variant mb-6 max-w-md leading-relaxed">
-                When the test starts, speak aloud and name as many <strong className="text-primary font-bold">ANIMALS</strong> as you can in 25 seconds (e.g. dog, lion, dolphin, sparrow).
+                When the test starts, speak aloud and name as many <strong className="text-primary font-bold">ANIMALS</strong> as you can in 25 seconds (e.g. dog, cat, lion, dolphin, sparrow).
               </p>
               <button
                 onClick={startTask}
-                className="w-full sm:w-auto min-w-[320px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all flex items-center justify-center gap-2"
+                className="w-full sm:w-auto min-w-[320px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all flex items-center justify-center gap-2 cursor-pointer"
                 type="button"
               >
                 <span className="material-symbols-outlined text-[20px]">mic</span>
@@ -189,32 +380,71 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
           ) : phase === 'recording' ? (
             <div className="flex flex-col items-center w-full">
               {/* Countdown Circular Badge */}
-              <div className="relative w-28 h-28 rounded-full bg-surface-container-high border-4 border-primary/30 flex items-center justify-center mb-4 shadow-md">
+              <div className="relative w-28 h-28 rounded-full bg-surface-container-high border-4 border-primary/30 flex items-center justify-center mb-3 shadow-md">
                 <span className="font-telemetry-numeric-lg text-[40px] font-black text-primary">
                   {secondsRemaining}s
                 </span>
               </div>
 
+              {/* Status Indicator */}
+              <div className="flex items-center gap-2 mb-2">
+                {speechStatus === 'active' ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-fixed/50 border border-secondary text-on-secondary-fixed-variant text-[11px] font-bold">
+                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                    Live Speech Recognition Active
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[11px] font-medium">
+                    <span className="material-symbols-outlined text-[14px]">info</span>
+                    Audio Phonation Recording (Type or speak words)
+                  </span>
+                )}
+              </div>
+
               {/* Pulsing Acoustic Waveform */}
-              <div className="flex items-center gap-1.5 h-10 px-4 my-2">
+              <div className="flex items-center gap-1.5 h-10 px-4 my-1">
                 {[6, 14, 28, 40, 24, 36, 18, 30, 12, 22, 34, 16, 8].map((h, i) => (
                   <div
                     key={i}
-                    style={{ height: `${Math.max(h * (acousticAnalyzer.volumeLevel * 4 || 0.4), 6)}px` }}
+                    style={{ height: `${Math.max(h * ((acousticAnalyzer?.volumeLevel ?? 0) * 4 || 0.4), 6)}px` }}
                     className="w-1.5 bg-primary rounded-full transition-all duration-75"
                   />
                 ))}
               </div>
 
               {/* Live Web Speech Transcript */}
-              <div className="w-full max-w-md p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 text-center my-3 min-h-[64px] flex items-center justify-center">
-                <p className="font-body-md text-[14px] text-on-surface italic">
-                  {liveTranscript || 'Listening... Speak animal names clearly...'}
+              <div className="w-full max-w-md p-3.5 rounded-xl bg-surface-container-low border border-surface-container-high/60 text-center my-2 min-h-[56px] flex items-center justify-center">
+                <p className="font-body-md text-[13px] text-on-surface italic">
+                  {liveTranscript || 'Listening... Speak animal names aloud...'}
                 </p>
               </div>
 
+              {/* Real-time Quick Input for maximum accessibility */}
+              <div className="flex items-center gap-2 w-full max-w-md my-2">
+                <input
+                  type="text"
+                  placeholder="Or type animal here & press Enter..."
+                  value={quickInput}
+                  onChange={(e) => setQuickInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      handleAddQuickWord();
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 rounded-lg bg-surface-container-lowest border border-surface-container-high text-[13px] text-on-surface outline-none focus:border-primary shadow-sm"
+                />
+                <button
+                  onClick={handleAddQuickWord}
+                  type="button"
+                  className="px-3.5 py-2 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-semibold text-[12px] shadow-sm transition-colors cursor-pointer"
+                >
+                  Add
+                </button>
+              </div>
+
               {/* Words Detected Live Chips */}
-              <div className="flex flex-wrap gap-1.5 justify-center max-w-md mt-2">
+              <div className="flex flex-wrap gap-1.5 justify-center max-w-md mt-1">
                 {recognizedWords.map((word, idx) => (
                   <span
                     key={idx}
@@ -237,36 +467,48 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
 
               {/* Word Chips */}
               <div className="flex flex-wrap gap-2 justify-center w-full p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 max-h-40 overflow-y-auto mb-3">
-                {recognizedWords.map((word) => (
-                  <span
-                    key={word}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-surface-container-lowest border border-surface-container-high text-[13px] font-semibold text-on-surface shadow-sm"
-                  >
-                    <span>{word}</span>
-                    <button
-                      onClick={() => handleRemoveWord(word)}
-                      className="hover:text-tertiary transition-colors"
-                      type="button"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">close</span>
-                    </button>
+                {recognizedWords.length === 0 ? (
+                  <span className="text-[13px] text-on-surface-variant italic">
+                    No animals logged yet. Add names using the input below.
                   </span>
-                ))}
+                ) : (
+                  recognizedWords.map((word) => (
+                    <span
+                      key={word}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container-lowest border border-surface-container-high text-[13px] font-semibold text-on-surface shadow-sm"
+                    >
+                      <span>{word}</span>
+                      <button
+                        onClick={() => handleRemoveWord(word)}
+                        className="hover:text-red-500 transition-colors cursor-pointer flex items-center"
+                        type="button"
+                        aria-label={`Remove ${word}`}
+                      >
+                        <span className="material-symbols-outlined text-[14px]">close</span>
+                      </button>
+                    </span>
+                  ))
+                )}
               </div>
 
               {/* Add Missing Word Input */}
               <div className="flex items-center gap-2 w-full mb-4">
                 <input
                   type="text"
-                  placeholder="Add missing animal (e.g. koala)"
-                  value={newWordInput}
-                  onChange={(e) => setNewWordInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddWord()}
+                  placeholder="Add animal (e.g. koala, hawk)"
+                  value={quickInput}
+                  onChange={(e) => setQuickInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddQuickWord();
+                    }
+                  }}
                   className="flex-1 px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container-high text-[13px] text-on-surface outline-none focus:border-primary"
                 />
                 <button
-                  onClick={handleAddWord}
-                  className="px-3 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold text-[13px] transition-colors"
+                  onClick={handleAddQuickWord}
+                  className="px-3.5 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold text-[13px] transition-colors cursor-pointer"
                   type="button"
                 >
                   Add
@@ -275,7 +517,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
 
               <button
                 onClick={handleConfirmAndProceed}
-                className="w-full py-3 rounded-xl bg-primary text-on-primary font-headline-sm text-[15px] font-semibold shadow-md hover:bg-primary-container transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl bg-primary text-on-primary font-headline-sm text-[15px] font-semibold shadow-md hover:bg-primary-container transition-all flex items-center justify-center gap-2 cursor-pointer"
                 type="button"
               >
                 <span>Confirm Words & Proceed</span>
@@ -308,7 +550,9 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col justify-between">
           <span className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant">Speech Rate Cadence</span>
           <div className="flex items-baseline gap-2 my-2">
-            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-on-surface">138 WPM</span>
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-on-surface">
+              {phase === 'recording' ? `${liveWpm} WPM` : recognizedWords.length > 0 ? `${Math.round(recognizedWords.length / (25 / 60))} WPM` : '0 WPM'}
+            </span>
             <span className="text-[12px] text-on-surface-variant">articulation speed</span>
           </div>
           <span className="text-[12px] text-on-surface-variant">Normative acoustic cadence</span>
@@ -317,7 +561,9 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col justify-between">
           <span className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant">Acoustic Pause Ratio</span>
           <div className="flex items-baseline gap-2 my-2">
-            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-secondary">16.4%</span>
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-secondary">
+              {livePauseRatio}%
+            </span>
             <span className="text-[12px] text-on-surface-variant">pause duration</span>
           </div>
           <span className="text-[12px] text-secondary font-medium">Smooth semantic retrieval transitions</span>
