@@ -88,7 +88,7 @@ export default async function handler(req, res) {
                 contents: [{
                   parts: [
                     { text: 'Transcribe all animal names and spoken words from this verbal fluency test audio accurately. Return only the plain transcribed words.' },
-                    { inline_data: { mime_type: 'audio/webm', data: base64Audio } }
+                    { inline_data: { mime_type: 'audio/wav', data: base64Audio } }
                   ]
                 }]
               })

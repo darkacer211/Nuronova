@@ -300,6 +300,8 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
     }
     setLastAudioBlob(audioBlob);
 
+    setPhase('review');
+
     // If an API key is available or serverless is configured, perform AI Whisper transcription
     const effectiveKey = apiKey || getStoredApiKey();
     if (audioBlob && audioBlob.size > 500) {
@@ -322,8 +324,6 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         setIsTranscribing(false);
       }
     }
-
-    setPhase('review');
   };
 
   // Re-run transcription if user enters API key during review
