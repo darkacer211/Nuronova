@@ -493,6 +493,55 @@ export function scoreRBQ2A(testConfig, responses) {
 }
 
 /**
+ * Score NICHQ Vanderbilt ADHD Parent Informant (18 items, inattentive & hyperactive subscales)
+ */
+export function scoreVanderbilt(testConfig, responses) {
+  let inattentiveCount = 0;
+  let hyperactiveCount = 0;
+  let totalScore = 0;
+  const itemScores = [];
+
+  testConfig.items.forEach((item) => {
+    const val = responses[item.id] !== undefined ? Number(responses[item.id]) : 0;
+    totalScore += val;
+    // Vanderbilt criteria: 2 ('Often') or 3 ('Very Often') counts as positive criterion
+    const isCriterion = val >= 2;
+    if (isCriterion) {
+      if (item.subscale === 'inattentive') inattentiveCount += 1;
+      if (item.subscale === 'hyperactive') hyperactiveCount += 1;
+    }
+    itemScores.push({ id: item.id, number: item.number, value: val, isCriterion });
+  });
+
+  const inattentiveElevated = inattentiveCount >= (testConfig.thresholds?.cutoffPerSubscale || 6);
+  const hyperactiveElevated = hyperactiveCount >= (testConfig.thresholds?.cutoffPerSubscale || 6);
+  const isPositive = inattentiveElevated || hyperactiveElevated;
+
+  let subtype = 'Sub-threshold';
+  if (inattentiveElevated && hyperactiveElevated) subtype = 'Combined Inattentive / Hyperactive Presentation';
+  else if (inattentiveElevated) subtype = 'Predominantly Inattentive Presentation';
+  else if (hyperactiveElevated) subtype = 'Predominantly Hyperactive/Impulsive Presentation';
+
+  return {
+    testId: testConfig.id,
+    name: testConfig.name,
+    condition: testConfig.condition,
+    totalScore,
+    inattentiveCount,
+    hyperactiveCount,
+    isPositive,
+    headline: isPositive ? `Elevated Pediatric ADHD Criteria (${subtype})` : 'Criteria Below Diagnostic Screening Cutoff',
+    summary: isPositive
+      ? `Parent ratings indicate elevated symptoms meeting screening criteria for ${subtype} (${inattentiveCount}/9 Inattentive, ${hyperactiveCount}/9 Hyperactive).`
+      : `Parent ratings indicate symptoms below the standard diagnostic criteria threshold (${inattentiveCount}/9 Inattentive, ${hyperactiveCount}/9 Hyperactive).`,
+    recommendation: isPositive
+      ? 'A comprehensive multi-setting developmental evaluation with your pediatrician or child psychologist is recommended.'
+      : 'Continue regular developmental and behavioral tracking with your pediatrician.',
+    itemScores,
+  };
+}
+
+/**
  * Universal dispatcher
  */
 export function scoreTest(testConfig, responses, followUpResponses = null) {
@@ -516,6 +565,9 @@ export function scoreTest(testConfig, responses, followUpResponses = null) {
   }
   if (testConfig.scoringStrategy === 'rbq2a_likert') {
     return scoreRBQ2A(testConfig, responses);
+  }
+  if (testConfig.scoringStrategy === 'vanderbilt_scoring') {
+    return scoreVanderbilt(testConfig, responses);
   }
   throw new Error(`Unsupported scoring strategy: ${testConfig.scoringStrategy}`);
 }

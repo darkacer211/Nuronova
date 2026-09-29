@@ -1,36 +1,41 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Eye, Shield, CheckCircle2, ArrowRight } from 'lucide-react';
 
 const COLOR_OPTIONS = [
-  { name: 'RED', color: '#f43f5e', key: 'd' },
-  { name: 'BLUE', color: '#06b6d4', key: 'f' },
-  { name: 'GREEN', color: '#10b981', key: 'j' },
-  { name: 'YELLOW', color: '#f59e0b', key: 'k' },
+  { name: 'RED', color: '#dc2626', bg: 'bg-red-500', key: 'd' },
+  { name: 'BLUE', color: '#2563eb', bg: 'bg-blue-600', key: 'f' },
+  { name: 'GREEN', color: '#059669', bg: 'bg-emerald-600', key: 'j' },
+  { name: 'YELLOW', color: '#d97706', bg: 'bg-amber-500', key: 'k' },
 ];
 
-export default function TaskStroop({ onComplete }) {
+export default function TaskStroop({ onComplete, onRoundUpdate }) {
   const [phase, setPhase] = useState('instructions'); // instructions, trial, feedback, finished
   const [trialIndex, setTrialIndex] = useState(0);
   const [currentStimulus, setCurrentStimulus] = useState(null);
-  const [feedback, setFeedback] = useState(null); // { correct: bool, text: string }
+  const [feedback, setFeedback] = useState(null);
 
-  const TOTAL_TRIALS = 16;
+  const TOTAL_TRIALS = 6;
   const trialsDataRef = useRef([]);
   const stimulusStartRef = useRef(0);
   const timeoutRef = useRef(null);
 
-  // Adaptive speed setting (starts at 1400ms, decreases by 100ms on hot streaks)
-  const presentationDurationRef = useRef(1400);
+  const presentationDurationRef = useRef(1500);
   const consecutiveCorrectRef = useRef(0);
 
-  // Generate randomized stimulus list (70% incongruent, 30% congruent)
-  const generateStimulus = useCallback((index) => {
+  // Initialize round tracking on mount
+  useEffect(() => {
+    if (onRoundUpdate) {
+      onRoundUpdate(1, TOTAL_TRIALS);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Generate randomized stimulus (65% incongruent, 35% congruent)
+  const generateStimulus = useCallback(() => {
     const isCongruent = Math.random() < 0.35;
     const textIdx = Math.floor(Math.random() * COLOR_OPTIONS.length);
     let colorIdx = textIdx;
 
     if (!isCongruent) {
-      // Pick a distinct color index
       let rand = Math.floor(Math.random() * (COLOR_OPTIONS.length - 1));
       if (rand >= textIdx) rand += 1;
       colorIdx = rand;
@@ -39,228 +44,274 @@ export default function TaskStroop({ onComplete }) {
     return {
       word: COLOR_OPTIONS[textIdx].name,
       inkColor: COLOR_OPTIONS[colorIdx].color,
+      inkColorClass: COLOR_OPTIONS[colorIdx].bg,
       correctKey: COLOR_OPTIONS[colorIdx].key,
       correctColorName: COLOR_OPTIONS[colorIdx].name,
       isCongruent: textIdx === colorIdx,
     };
   }, []);
 
-  const runTrial = useCallback(
-    (index) => {
-      const stim = generateStimulus(index);
-      setCurrentStimulus(stim);
-      setFeedback(null);
-      setPhase('trial');
-      stimulusStartRef.current = performance.now();
+  const runTrial = useCallback((index) => {
+    const stim = generateStimulus();
+    setCurrentStimulus(stim);
+    setFeedback(null);
+    setPhase('trial');
+    stimulusStartRef.current = performance.now();
 
-      // Automatic timeout for adaptive speed pressure
-      timeoutRef.current = setTimeout(() => {
-        handleResponse('TIMEOUT');
-      }, presentationDurationRef.current);
-    },
-    [generateStimulus]
-  );
+    if (onRoundUpdate) {
+      onRoundUpdate(index + 1, TOTAL_TRIALS);
+    }
 
-  const handleResponse = useCallback(
-    (keyChosen) => {
-      clearTimeout(timeoutRef.current);
-      if (phase !== 'trial' || !currentStimulus) return;
+    timeoutRef.current = setTimeout(() => {
+      handleResponse('TIMEOUT');
+    }, presentationDurationRef.current);
+  }, [generateStimulus, onRoundUpdate]);
 
-      const rt = performance.now() - stimulusStartRef.current;
-      const isCorrect = keyChosen.toLowerCase() === currentStimulus.correctKey;
+  const handleResponse = useCallback((keyChosen) => {
+    clearTimeout(timeoutRef.current);
+    if (phase !== 'trial' || !currentStimulus) return;
 
-      if (isCorrect) {
-        consecutiveCorrectRef.current += 1;
-        // Adaptive staircase: increase speed if user has 3 consecutive correct
-        if (consecutiveCorrectRef.current >= 3) {
-          presentationDurationRef.current = Math.max(presentationDurationRef.current - 120, 750);
-          consecutiveCorrectRef.current = 0;
-        }
-      } else {
+    const rt = performance.now() - stimulusStartRef.current;
+    const isCorrect = keyChosen.toLowerCase() === currentStimulus.correctKey;
+
+    if (isCorrect) {
+      consecutiveCorrectRef.current += 1;
+      if (consecutiveCorrectRef.current >= 3) {
+        presentationDurationRef.current = Math.max(presentationDurationRef.current - 100, 800);
         consecutiveCorrectRef.current = 0;
-        // Ease speed if user fails
-        presentationDurationRef.current = Math.min(presentationDurationRef.current + 100, 1600);
       }
+    } else {
+      consecutiveCorrectRef.current = 0;
+      presentationDurationRef.current = Math.min(presentationDurationRef.current + 80, 1600);
+    }
 
-      trialsDataRef.current.push({
-        isCongruent: currentStimulus.isCongruent,
-        rt: keyChosen === 'TIMEOUT' ? 1400 : Math.round(rt),
-        correct: isCorrect,
-        timeout: keyChosen === 'TIMEOUT',
-      });
+    trialsDataRef.current.push({
+      isCongruent: currentStimulus.isCongruent,
+      rt: keyChosen === 'TIMEOUT' ? 1500 : Math.round(rt),
+      correct: isCorrect,
+      timeout: keyChosen === 'TIMEOUT',
+    });
 
-      setFeedback({
-        correct: isCorrect,
-        text: isCorrect
-          ? `Correct (${Math.round(rt)} ms)`
-          : keyChosen === 'TIMEOUT'
-          ? 'Time Expired!'
-          : `Miss! Ink color was ${currentStimulus.correctColorName}`,
-      });
-      setPhase('feedback');
+    setFeedback({
+      correct: isCorrect,
+      text: isCorrect
+        ? `Correct (${Math.round(rt)} ms)`
+        : keyChosen === 'TIMEOUT'
+        ? 'Time Expired!'
+        : `Miss! Ink color was ${currentStimulus.correctColorName}`,
+    });
+    setPhase('feedback');
 
+    const nextIndex = trialIndex + 1;
+    if (nextIndex < TOTAL_TRIALS) {
+      setTrialIndex(nextIndex);
       setTimeout(() => {
-        if (trialIndex + 1 < TOTAL_TRIALS) {
-          setTrialIndex((prev) => prev + 1);
-          runTrial(trialIndex + 1);
-        } else {
-          finishTask();
-        }
+        runTrial(nextIndex);
       }, 700);
-    },
-    [phase, currentStimulus, trialIndex, runTrial]
-  );
+    } else {
+      setPhase('finished');
+      finishTask();
+    }
+  }, [phase, currentStimulus, trialIndex, runTrial]);
 
-  const finishTask = useCallback(() => {
-    setPhase('finished');
+  const finishTask = () => {
     const trials = trialsDataRef.current;
     const congruentTrials = trials.filter((t) => t.isCongruent && t.correct);
     const incongruentTrials = trials.filter((t) => !t.isCongruent && t.correct);
 
-    const meanCongruentRt =
-      congruentTrials.length > 0
-        ? congruentTrials.reduce((s, t) => s + t.rt, 0) / congruentTrials.length
-        : 450.0;
+    const congRt = congruentTrials.length > 0
+      ? Math.round(congruentTrials.reduce((a, b) => a + b.rt, 0) / congruentTrials.length)
+      : 520;
+    const incongRt = incongruentTrials.length > 0
+      ? Math.round(incongruentTrials.reduce((a, b) => a + b.rt, 0) / incongruentTrials.length)
+      : 630;
+    const interferenceCost = Math.max(incongRt - congRt, 10);
+    const accuracy = trials.filter((t) => t.correct).length / Math.max(trials.length, 1);
 
-    const meanIncongruentRt =
-      incongruentTrials.length > 0
-        ? incongruentTrials.reduce((s, t) => s + t.rt, 0) / incongruentTrials.length
-        : 580.0;
+    setTimeout(() => {
+      onComplete({
+        congruent_mean_rt: congRt,
+        incongruent_mean_rt: incongRt,
+        interference_cost: interferenceCost,
+        accuracy: Number(accuracy.toFixed(2)),
+        total_trials: trials.length,
+      });
+    }, 1200);
+  };
 
-    const cost = Math.max(meanIncongruentRt - meanCongruentRt, 20.0);
-    const accuracy = trials.filter((t) => t.correct).length / trials.length;
-
-    onComplete({
-      mean_congruent_rt: Math.round(meanCongruentRt),
-      mean_incongruent_rt: Math.round(meanIncongruentRt),
-      interference_cost: Math.round(cost),
-      accuracy: Number(accuracy.toFixed(2)),
-      total_trials: TOTAL_TRIALS,
-    });
-  }, [onComplete]);
-
-  // Keyboard handler for D, F, J, K keys
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (phase === 'instructions' && (e.code === 'Space' || e.code === 'Enter')) {
+        e.preventDefault();
+        runTrial(0);
+        return;
+      }
+      if (phase !== 'trial') return;
       const key = e.key.toLowerCase();
-      if (phase === 'instructions') {
-        if (e.code === 'Space') runTrial(0);
-      } else if (phase === 'trial') {
-        if (['d', 'f', 'j', 'k'].includes(key)) {
-          e.preventDefault();
-          handleResponse(key);
-        }
+      if (['d', 'f', 'j', 'k'].includes(key)) {
+        e.preventDefault();
+        handleResponse(key);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      clearTimeout(timeoutRef.current);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [phase, handleResponse, runTrial]);
 
+  // Derived stats for display
+  const completedCount = trialsDataRef.current.length;
+  const correctCount = trialsDataRef.current.filter((t) => t.correct).length;
+  const currentAccuracy = completedCount > 0 ? Math.round((correctCount / completedCount) * 100) : 100;
+
+  const congruentTrials = trialsDataRef.current.filter((t) => t.isCongruent && t.correct);
+  const incongruentTrials = trialsDataRef.current.filter((t) => !t.isCongruent && t.correct);
+  const currentCongRt = congruentTrials.length > 0
+    ? Math.round(congruentTrials.reduce((a, b) => a + b.rt, 0) / congruentTrials.length)
+    : 520;
+  const currentIncongRt = incongruentTrials.length > 0
+    ? Math.round(incongruentTrials.reduce((a, b) => a + b.rt, 0) / incongruentTrials.length)
+    : 630;
+  const currentInterference = Math.max(currentIncongRt - currentCongRt, 110);
+
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-      {/* Progress & Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <div>
-          <span className="badge-pill badge-violet" style={{ marginRight: '8px' }}>Task 2 of 4</span>
-          <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Dual-Rule Stroop Task</span>
-        </div>
-        <div className="mono-num" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          Trial {trialIndex + 1} / {TOTAL_TRIALS}
+    <div className="flex flex-col gap-4 w-full">
+      {/* Primary Stimulus Container */}
+      <div className="relative overflow-hidden w-full min-h-[420px] rounded-xl bg-surface-container-lowest shadow-sm p-8 flex flex-col items-center justify-center text-center transition-all duration-300 border border-surface-container-high/60">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-fixed/20 via-transparent to-secondary-container/15 pointer-events-none" />
+
+        {/* Center Stimulus Core Focus Area */}
+        <div className="flex flex-col items-center max-w-xl my-auto py-4 relative z-10 w-full">
+          {phase === 'instructions' ? (
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center text-primary mb-4 shadow-sm">
+                <span className="material-symbols-outlined text-[32px]">psychology</span>
+              </div>
+              <h1 className="font-display text-[36px] font-bold text-on-surface mb-2 tracking-tight">
+                Stroop Executive Control
+              </h1>
+              <p className="font-body-lg text-[15px] text-on-surface-variant mb-6 max-w-md leading-relaxed">
+                Name the <strong className="text-primary font-bold">INK COLOR</strong> of the word, ignore the text reading. Strike the matching color key as fast as you can.
+              </p>
+              <button
+                onClick={() => runTrial(0)}
+                className="w-full sm:w-auto min-w-[300px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all"
+                type="button"
+              >
+                <span>Begin Test (Press Space or Click)</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center w-full">
+              {/* Central Stroop Stimulus Word */}
+              <div className="my-6 py-6 px-12 rounded-2xl bg-surface-container-low border border-surface-container-high/60 shadow-inner flex items-center justify-center min-w-[320px] min-h-[140px]">
+                <span
+                  className="font-display text-[58px] font-extrabold tracking-widest select-none transition-transform"
+                  style={{ color: currentStimulus?.inkColor }}
+                >
+                  {currentStimulus?.word}
+                </span>
+              </div>
+
+              {/* Feedback Banner */}
+              {feedback && (
+                <div className={`mb-4 px-4 py-1.5 rounded-full text-[13px] font-bold flex items-center gap-1.5 shadow-sm ${
+                  feedback.correct ? 'bg-secondary-fixed text-on-secondary-fixed-variant' : 'bg-error-container text-on-error-container'
+                }`}>
+                  <span className="material-symbols-outlined text-[16px]">
+                    {feedback.correct ? 'check_circle' : 'cancel'}
+                  </span>
+                  <span>{feedback.text}</span>
+                </div>
+              )}
+
+              {/* 4 Interactive Color Touch Buttons with Key Shortcuts */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-md">
+                {COLOR_OPTIONS.map((btn) => (
+                  <button
+                    key={btn.key}
+                    onClick={() => handleResponse(btn.key)}
+                    style={{ borderColor: btn.color }}
+                    className="p-3 rounded-xl bg-surface-container-low hover:bg-surface-container-high border-2 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-sm"
+                    type="button"
+                  >
+                    <span className="w-5 h-5 rounded-full shadow-sm" style={{ backgroundColor: btn.color }}></span>
+                    <span className="font-headline-sm text-[13px] font-bold text-on-surface">{btn.name}</span>
+                    <span className="font-telemetry-data text-[10px] text-on-surface-variant font-semibold px-2 py-0.5 rounded bg-surface-container-highest uppercase">
+                      [{btn.key.toUpperCase()}]
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Main Interaction Arena */}
-      <div className="test-arena">
-        {phase === 'instructions' && (
-          <div style={{ textAlign: 'center', maxWidth: '540px' }}>
-            <div style={{ width: '64px', height: '64px', margin: '0 auto 18px auto', borderRadius: '50%', background: 'var(--violet-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Eye size={32} color="var(--violet-glow)" />
-            </div>
-            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '10px' }}>
-              Identify the INK COLOR, not the word
-            </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '20px' }}>
-              Inhibit the urge to read the printed word. Respond exclusively to the font color using keyboard keys or buttons below:
-            </p>
-
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '24px' }}>
-              {COLOR_OPTIONS.map((c) => (
-                <div key={c.name} style={{ background: 'rgba(255,255,255,0.05)', padding: '10px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-                  <div style={{ color: c.color, fontWeight: 700, fontSize: '0.9rem' }}>{c.name}</div>
-                  <div className="mono-num" style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '4px' }}>Key [{c.key.toUpperCase()}]</div>
-                </div>
-              ))}
-            </div>
-
-            <button className="btn-primary" onClick={() => runTrial(0)}>
-              Start Stroop Task (Spacebar)
-            </button>
+      {/* Simplified, Clean Auxiliary Metric Cards (3 Cards) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Card 1: Accuracy */}
+        <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col justify-between transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Inhibition Accuracy
+            </span>
+            <span className={`material-symbols-outlined text-[18px] ${currentAccuracy >= 80 ? 'text-secondary' : 'text-amber-500'}`}>
+              {currentAccuracy >= 80 ? 'verified' : 'warning'}
+            </span>
           </div>
-        )}
-
-        {phase === 'trial' && currentStimulus && (
-          <div style={{ textAlign: 'center' }}>
-            <div
-              style={{
-                fontSize: '4.2rem',
-                fontWeight: 800,
-                color: currentStimulus.inkColor,
-                letterSpacing: '0.04em',
-                textShadow: `0 0 35px ${currentStimulus.inkColor}66`,
-                marginBottom: '32px',
-              }}
-            >
-              {currentStimulus.word}
-            </div>
-
-            {/* Response buttons for touch/mouse */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              {COLOR_OPTIONS.map((c) => (
-                <button
-                  key={c.name}
-                  onClick={() => handleResponse(c.key)}
-                  className="btn-secondary"
-                  style={{
-                    borderColor: c.color,
-                    color: '#fff',
-                    padding: '12px 20px',
-                    fontSize: '0.95rem',
-                    background: `${c.color}22`,
-                  }}
-                >
-                  <span style={{ fontWeight: 700, color: c.color }}>{c.name}</span>
-                  <span className="mono-num" style={{ opacity: 0.7, fontSize: '0.8rem' }}>[{c.key.toUpperCase()}]</span>
-                </button>
-              ))}
-            </div>
+          <div className="flex items-baseline gap-2 my-2">
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-primary">
+              {currentAccuracy}%
+            </span>
           </div>
-        )}
-
-        {phase === 'feedback' && feedback && (
-          <div style={{ textAlign: 'center' }}>
-            <div
-              style={{
-                fontSize: '2rem',
-                fontWeight: 700,
-                color: feedback.correct ? 'var(--emerald-glow)' : 'var(--rose-primary)',
-              }}
-            >
-              {feedback.text}
-            </div>
+          <div className="flex items-center justify-between text-on-surface-variant text-[11px] font-medium pt-2 border-t border-surface-container-high/40">
+            <span>Accuracy Rate</span>
+            <span className="text-secondary font-semibold">
+              {currentAccuracy >= 80 ? 'Optimal' : 'Variable'}
+            </span>
           </div>
-        )}
+        </div>
 
-        {phase === 'finished' && (
-          <div style={{ textAlign: 'center' }}>
-            <CheckCircle2 size={48} color="var(--emerald-glow)" style={{ margin: '0 auto 12px auto' }} />
-            <h4 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Stroop Task Completed</h4>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Quantifying interference cost...</p>
+        {/* Card 2: Baseline Speed */}
+        <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col justify-between transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Congruent RT Baseline
+            </span>
+            <span className="material-symbols-outlined text-[18px] text-primary">
+              timer
+            </span>
           </div>
-        )}
+          <div className="flex items-baseline gap-2 my-2">
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-on-surface">
+              {currentCongRt} ms
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-on-surface-variant text-[11px] font-medium pt-2 border-t border-surface-container-high/40">
+            <span>Baseline Speed</span>
+            <span className="text-primary font-semibold">Normal</span>
+          </div>
+        </div>
+
+        {/* Card 3: Interference Delay */}
+        <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col justify-between transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Interference Latency
+            </span>
+            <span className="material-symbols-outlined text-[18px] text-secondary">
+              speed
+            </span>
+          </div>
+          <div className="flex items-baseline gap-2 my-2">
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-secondary">
+              +{currentInterference} ms
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-on-surface-variant text-[11px] font-medium pt-2 border-t border-surface-container-high/40">
+            <span>Cognitive Cost</span>
+            <span className="text-secondary font-semibold">Typical Range</span>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, ShieldAlert, Upload } from 'lucide-react';
-import ScreeningDisclaimer from './ScreeningDisclaimer';
-import { isInstrumentRunnable, getInstrumentLicensing } from '../engine/textLoader';
 import LicensingGateModal from './LicensingGateModal';
+import { isInstrumentRunnable, getInstrumentLicensing } from '../engine/textLoader';
 
 export default function QuestionRenderer({
   testConfig,
@@ -28,7 +26,6 @@ export default function QuestionRenderer({
 
     const handleKeyDown = (e) => {
       if (!testConfig?.scale) return;
-      // Numbers 1 to scale.length
       const num = parseInt(e.key, 10);
       if (!isNaN(num) && num >= 1 && num <= testConfig.scale.length) {
         const option = testConfig.scale[num - 1];
@@ -46,10 +43,9 @@ export default function QuestionRenderer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentIndex, currentValue, testConfig?.scale, onSelectOption, onPrev, onNext, isRunnable]);
 
-  // REFUSE EXECUTION IF TEXT IS NOT LOADED
   if (!isRunnable || !item) {
     return (
-      <div style={{ maxWidth: '780px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div className="max-w-[780px] mx-auto w-full flex flex-col gap-6 py-4">
         <LicensingGateModal
           isOpen={isLicensingModalOpen}
           instrumentId={testConfig?.id}
@@ -58,177 +54,98 @@ export default function QuestionRenderer({
           onSuccessLoaded={() => window.location.reload()}
         />
 
-        <div className="glass-panel" style={{ padding: '36px 32px', textAlign: 'center' }}>
-          <div
-            style={{
-              width: '54px',
-              height: '54px',
-              borderRadius: '50%',
-              background: 'rgba(245, 158, 11, 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px auto',
-            }}
-          >
-            <ShieldAlert size={28} color="#f59e0b" />
+        <div className="bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-surface-container-high/60 text-center">
+          <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+            <span className="material-symbols-outlined text-[28px]">shield</span>
           </div>
 
-          <span className="badge-pill badge-amber" style={{ marginBottom: '12px', display: 'inline-block' }}>
-            Coming Soon • Licensing Pending
+          <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-label-caps text-[11px] font-bold uppercase mb-3 inline-block">
+            Licensing Authorization Pending
           </span>
 
-          <h3 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '8px' }}>
+          <h3 className="font-headline-sm text-[20px] font-bold text-on-surface mb-2">
             {testConfig?.name || 'Screening Instrument'}
           </h3>
 
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', maxWidth: '600px', margin: '0 auto 20px auto', lineHeight: 1.6 }}>
-            Official question text for this clinical instrument is held under copyright ({licenseInfo.requiredCopyright}). To ensure legal compliance, the UI refuses to run this screener until authorized text is supplied.
+          <p className="font-body-md text-[14px] text-on-surface-variant max-w-lg mx-auto mb-6 leading-relaxed">
+            Official question text for this clinical instrument is held under copyright ({licenseInfo.requiredCopyright}). The system requires authorized text confirmation.
           </p>
 
-          <div
-            style={{
-              background: 'rgba(255, 255, 255, 0.02)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '16px',
-              maxWidth: '560px',
-              margin: '0 auto 24px auto',
-              textAlign: 'left',
-              fontSize: '0.82rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-            }}
+          <button
+            onClick={() => setIsLicensingModalOpen(true)}
+            className="px-6 py-2.5 rounded-xl bg-primary text-on-primary font-body-md font-semibold hover:bg-primary-container transition-colors shadow-sm"
+            type="button"
           >
-            <div>
-              <strong style={{ color: 'var(--text-dim)' }}>Publisher / Rights: </strong>
-              <span style={{ color: '#e2e8f0' }}>{licenseInfo.permissionContact}</span>
-            </div>
-            <div>
-              <strong style={{ color: 'var(--text-dim)' }}>Citation: </strong>
-              <span style={{ color: '#cbd5e1' }}>{licenseInfo.citation}</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-            <button onClick={onCancel} className="btn-secondary" style={{ padding: '10px 20px', fontSize: '0.88rem' }}>
-              Back to Screeners
-            </button>
-            <button
-              onClick={() => setIsLicensingModalOpen(true)}
-              className="btn-primary"
-              style={{ padding: '10px 20px', fontSize: '0.88rem' }}
-            >
-              <Upload size={16} />
-              <span>Supply Authorized Text</span>
-            </button>
-          </div>
+            Supply Authorized Text
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: '780px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Top Header / Progress Indicator */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <span className="badge-pill badge-violet" style={{ marginRight: '8px' }}>
+    <div className="max-w-[780px] mx-auto w-full flex flex-col gap-5 py-4">
+      {/* Top Header & Progress */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="px-2.5 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed font-label-caps text-[11px] font-bold uppercase">
             {testConfig.shortName}
           </span>
           {item.subscale && (
-            <span className="badge-pill badge-cyan" style={{ textTransform: 'capitalize' }}>
+            <span className="px-2.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-caps text-[11px] font-bold uppercase">
               {item.subscale}
             </span>
           )}
         </div>
-        <div className="mono-num" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          Question {currentIndex + 1} of {totalItems}
-        </div>
+        <span className="font-telemetry-data text-[13px] text-on-surface-variant">
+          Question <strong>{currentIndex + 1}</strong> of {totalItems}
+        </span>
       </div>
 
       {/* Progress Bar */}
-      <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
+      <div className="w-full h-2 bg-surface-container-low rounded-full overflow-hidden border border-surface-container-high/40">
         <div
-          style={{
-            height: '100%',
-            width: `${progressPct}%`,
-            background: 'linear-gradient(90deg, var(--cyan-primary), var(--violet-primary))',
-            borderRadius: 'var(--radius-full)',
-            transition: 'width 0.25s ease',
-          }}
+          className="h-full bg-primary rounded-full transition-all duration-300"
+          style={{ width: `${progressPct}%` }}
         />
       </div>
 
       {/* Main Question Card */}
-      <div className="glass-panel" style={{ padding: '36px 32px' }}>
-        <div style={{ fontSize: '0.82rem', color: 'var(--text-dim)', marginBottom: '8px' }}>
-          ITEM #{item.number}
-        </div>
-        <h3
-          style={{
-            fontSize: '1.4rem',
-            fontWeight: 700,
-            lineHeight: 1.5,
-            color: '#ffffff',
-            marginBottom: '32px',
-          }}
-        >
+      <div className="bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-surface-container-high/60">
+        <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant mb-2 block">
+          Item #{item.number}
+        </span>
+        <h3 className="font-headline-sm text-[22px] font-bold text-on-surface leading-snug mb-8">
           {item.text}
         </h3>
 
         {/* Answer Options Radio List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '32px' }}>
+        <div className="flex flex-col gap-3 mb-8">
           {testConfig.scale.map((option, idx) => {
             const isSelected = currentValue === option.value;
-
             return (
               <button
                 key={String(option.value)}
                 onClick={() => onSelectOption(option.value)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '16px 20px',
-                  borderRadius: 'var(--radius-md)',
-                  background: isSelected ? 'rgba(6, 182, 212, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                  border: isSelected ? '1px solid var(--cyan-glow)' : '1px solid var(--border-subtle)',
-                  color: isSelected ? '#ffffff' : 'var(--text-main)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                  boxShadow: isSelected ? '0 0 20px rgba(6, 182, 212, 0.25)' : 'none',
-                }}
+                className={`flex items-center justify-between p-4 rounded-xl border transition-all text-left ${
+                  isSelected
+                    ? 'bg-primary-fixed/30 border-primary text-on-surface font-semibold shadow-sm'
+                    : 'bg-surface-container-low border-surface-container-high hover:bg-surface-container hover:border-primary/40 text-on-surface'
+                }`}
+                type="button"
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div className="flex items-center gap-3">
                   <div
-                    style={{
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '50%',
-                      border: isSelected ? '6px solid var(--cyan-glow)' : '2px solid var(--text-dim)',
-                      background: isSelected ? '#ffffff' : 'transparent',
-                      transition: 'all 0.15s ease',
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span style={{ fontSize: '1rem', fontWeight: isSelected ? 600 : 500 }}>
-                    {option.label}
-                  </span>
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                      isSelected ? 'border-primary bg-primary' : 'border-outline-variant bg-transparent'
+                    }`}
+                  >
+                    {isSelected && <span className="w-2 h-2 rounded-full bg-white"></span>}
+                  </div>
+                  <span className="font-body-md text-[15px]">{option.label}</span>
                 </div>
 
-                <span
-                  className="mono-num"
-                  style={{
-                    fontSize: '0.78rem',
-                    color: isSelected ? 'var(--cyan-glow)' : 'var(--text-dim)',
-                    padding: '2px 8px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(0,0,0,0.2)',
-                  }}
-                >
+                <span className="font-telemetry-data text-[11px] text-on-surface-variant font-bold px-2 py-0.5 rounded bg-surface-container-highest uppercase">
                   [{idx + 1}]
                 </span>
               </button>
@@ -236,41 +153,29 @@ export default function QuestionRenderer({
           })}
         </div>
 
-        {/* Navigation Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-subtle)', paddingTop: '20px' }}>
+        {/* Card Footer Controls */}
+        <div className="flex items-center justify-between pt-4 border-t border-surface-container-high/60">
           <button
             onClick={onPrev}
             disabled={currentIndex === 0}
-            className="btn-secondary"
-            style={{ padding: '10px 18px', opacity: currentIndex === 0 ? 0.3 : 1 }}
+            className="px-4 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high disabled:opacity-30 font-body-sm text-[13px] font-semibold transition-colors flex items-center gap-1.5"
+            type="button"
           >
-            <ArrowLeft size={16} />
+            <span className="material-symbols-outlined text-[18px]">arrow_back</span>
             <span>Previous</span>
-          </button>
-
-          <button
-            onClick={onCancel}
-            style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: '0.82rem', cursor: 'pointer' }}
-          >
-            Exit Screener
           </button>
 
           <button
             onClick={onNext}
             disabled={currentValue === undefined || currentValue === ''}
-            className="btn-primary"
-            style={{
-              padding: '10px 22px',
-              opacity: currentValue === undefined || currentValue === '' ? 0.4 : 1,
-            }}
+            className="px-6 py-2.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container disabled:opacity-40 font-headline-sm text-[14px] font-semibold transition-all flex items-center gap-2 shadow-sm"
+            type="button"
           >
-            <span>{isLastQuestion ? 'Complete Questionnaire' : 'Next Question'}</span>
-            <ArrowRight size={16} />
+            <span>{isLastQuestion ? 'Complete Screener' : 'Next Question'}</span>
+            <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
         </div>
       </div>
-
-      <ScreeningDisclaimer compact={true} />
     </div>
   );
 }

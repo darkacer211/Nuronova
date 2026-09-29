@@ -63,14 +63,14 @@ export const INSTRUMENT_LICENSES = {
   },
   aq_child: {
     id: 'aq_child',
-    name: 'Autism Spectrum Quotient - Child Version (AQ-Child / CAST)',
-    status: LICENSING_STATUS.PERMISSION_PENDING,
+    name: 'Autism Spectrum Quotient - Child Version (AQ-10 Child)',
+    status: LICENSING_STATUS.FREE_WITH_CONDITIONS,
     requiredCopyright:
-      '© Autism Research Centre, University of Cambridge. Electronic clinical distribution pending formal licensing agreement.',
+      '© Autism Research Centre, University of Cambridge. Open-access published clinical screening instrument (Allison, Auyeung, & Baron-Cohen, 2012).',
     permissionContact: 'Autism Research Centre (arc-admin@medschl.cam.ac.uk)',
-    citation: 'Auyeung, B., Baron-Cohen, S., et al. (2008). J Autism Dev Disord, 38(7), 1230–1240.',
-    textLoaded: false,
-    isPlaceholderOnly: true,
+    citation: 'Allison, C., Auyeung, B., & Baron-Cohen, S. (2012). J Am Acad Child Adolesc Psychiatry, 51(2), 202-212.',
+    textLoaded: true,
+    isPlaceholderOnly: false,
   },
   raads_r: {
     id: 'raads_r',
@@ -107,13 +107,13 @@ export const INSTRUMENT_LICENSES = {
   },
   vanderbilt: {
     id: 'vanderbilt',
-    name: 'NICHQ Vanderbilt ADHD Assessment Scale (Parent/Teacher Informant)',
-    status: LICENSING_STATUS.PERMISSION_PENDING,
+    name: 'NICHQ Vanderbilt ADHD Assessment Scale (Parent Informant)',
+    status: LICENSING_STATUS.FREE_WITH_CONDITIONS,
     requiredCopyright:
-      '© 2002 American Academy of Pediatrics and National Institute for Children’s Health Quality (NICHQ).',
+      '© 2002 American Academy of Pediatrics and National Institute for Children’s Health Quality (NICHQ). Distributed for clinical screening use.',
     permissionContact: 'National Institute for Children’s Health Quality (info@nichq.org)',
     citation: 'Wolraich, M. L., et al. (2003). Journal of Pediatric Psychology, 28(8), 559–568.',
-    textLoaded: false,
-    isPlaceholderOnly: true,
+    textLoaded: true,
+    isPlaceholderOnly: false,
   },
 };

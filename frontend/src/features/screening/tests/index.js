@@ -35,12 +35,12 @@ export const SCREENING_FLOWS = [
   {
     id: 'pediatric_child',
     targetAgeGroup: 'child',
-    title: 'Child & Adolescent Autism Screen (AQ-Child)',
+    title: 'Child & Adolescent AuDHD Screen (Vanderbilt + AQ-Child)',
     badge: 'Ages 4–15',
-    duration: '~5 mins',
+    duration: '~6–8 mins',
     respondent: 'Parent / Caregiver Assisted',
-    description: 'Parent-report screening framework for school-age children (Auyeung & Baron-Cohen).',
-    testIds: ['aq_child'],
+    description: 'Comprehensive pediatric AuDHD battery: Vanderbilt ADHD Parent Rating Scale + AQ-10 Child Autism Spectrum Quotient.',
+    testIds: ['vanderbilt', 'aq_child'],
   },
 
   // Adult Flows (18+ Self-Report)

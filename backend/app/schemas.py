@@ -7,6 +7,10 @@ class PVTMetrics(BaseModel):
     false_starts: int = Field(0, description="Count of premature presses (< 100ms)")
     inv_rt: float = Field(..., description="Mean reciprocal RT (1/RT * 1000)")
     trials_count: int = Field(15, description="Total number of valid PVT trials")
+    rt_sd: Optional[float] = Field(None, description="Standard deviation of reaction times in ms")
+    rt_cv: Optional[float] = Field(None, description="Coefficient of variation of reaction times (SDRT / MeanRT)")
+    fast_responses_count: Optional[int] = Field(None, description="Count of fast responses / anticipations (<150ms + premature)")
+    slow_responses_count: Optional[int] = Field(None, description="Count of slow responses (>500ms attentional lapses)")
 
 class StroopMetrics(BaseModel):
     mean_congruent_rt: float = Field(..., description="Mean RT on congruent trials in ms")
@@ -100,6 +104,7 @@ class AnalysisResponse(BaseModel):
     shap_explanations: List[SHAPFeatureImpact]
     narrative_report: NarrativeReport
     raw_feature_count: int
+    integrated_findings: Optional[Dict[str, Any]] = None
 
 class TranscribeResponse(BaseModel):
     transcript: str

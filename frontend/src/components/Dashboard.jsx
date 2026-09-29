@@ -1,38 +1,69 @@
-import React, { useEffect, useState } from 'react';
-import {
-  Brain,
-  Zap,
-  ShieldCheck,
-  TrendingUp,
-  Download,
-  RotateCcw,
-  Sparkles,
-  Award,
-  AlertCircle,
-  HelpCircle,
-  Baby,
-  Camera,
-  User,
-  CheckCircle2,
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
+import { generateIntegratedFindings } from '../features/report/integrate';
+import { MEASURE_REFERENCES, GLOSSARY_TERMS } from '../features/report/reportConfig';
 
+/**
+ * Glossary Tooltip / Popover Component
+ * Renders a plain-language explanation when hovering or tapping on clinical/technical terms.
+ */
+function GlossaryTerm({ termKey, label, children }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const termData = GLOSSARY_TERMS[termKey] || { term: label || termKey, definition: '' };
+
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        onMouseEnter={() => setIsOpen(true)}
+        onMouseLeave={() => setIsOpen(false)}
+        className="inline-flex items-center gap-0.5 text-left border-b border-dotted border-primary/60 dark:border-primary/80 text-on-surface hover:text-primary transition-colors cursor-help font-inherit focus:outline-none"
+        title="Click or hover for plain-language definition"
+      >
+        <span>{children || label || termData.term}</span>
+        <span className="material-symbols-outlined text-[14px] text-primary/70 ml-0.5 select-none">help_outline</span>
+      </button>
+
+      {isOpen && (
+        <span className="absolute z-50 bottom-full left-0 mb-2 w-72 p-3 bg-surface-container-highest dark:bg-slate-900 text-on-surface border border-surface-container-high/80 dark:border-slate-700 rounded-xl shadow-xl text-xs font-normal normal-case leading-relaxed pointer-events-none transform transition-all duration-150">
+          <strong className="block text-[13px] font-bold text-primary mb-1">{termData.term}</strong>
+          <span className="text-on-surface-variant dark:text-slate-300">{termData.definition}</span>
+          <span className="absolute top-full left-4 -mt-1 w-2.5 h-2.5 bg-surface-container-highest dark:bg-slate-900 border-r border-b border-surface-container-high/80 dark:border-slate-700 transform rotate-45"></span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Main Clinical Neuro-Analytics Dashboard
+ * Re-structured per clinical reporting specifications:
+ * 1. Short summary (CPI, percentile, CI, status, 3 plain takeaways)
+ * 2. 4 domain scores as bars with population average (75) marked
+ * 3. Integrated findings (Cross-modal Tasks x Sensors x Screeners with agreement matrix)
+ * 4. Test-by-test table (Measure, Result, Range, Meaning, Status chip with text+icon)
+ * 5. Score drivers (SHAP) in plain language
+ * 6. Suggested next steps
+ * 7. Limits of this report (with non-diagnostic disclaimer)
+ * 8. Collapsible technical appendix (Formulas, weights, cutoffs, sensor methods)
+ */
 export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
-  const [activeSection, setActiveSection] = useState('all'); // 'all', 'cognitive', 'vision', 'screening', 'ai_insights'
+  const [appendixOpen, setAppendixOpen] = useState(false);
 
   useEffect(() => {
     confetti({
-      particleCount: 45,
-      spread: 60,
+      particleCount: 35,
+      spread: 55,
       origin: { y: 0.6 },
-      colors: ['#06b6d4', '#8b5cf6', '#10b981'],
+      colors: ['#4648d4', '#006c49', '#6063ee'],
     });
   }, []);
 
   if (!analysisResult) {
     return (
-      <div className="glass-panel" style={{ padding: '60px', textAlign: 'center' }}>
-        <p>Loading cognitive analytics...</p>
+      <div className="p-12 text-center bg-surface-container-lowest rounded-xl shadow-sm border border-surface-container-high/60">
+        <p className="font-body-md text-on-surface-variant">Loading cognitive analytics...</p>
       </div>
     );
   }
@@ -45,7 +76,6 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
 
   const domains = analysisResult?.domains || {};
   const shap_explanations = Array.isArray(analysisResult?.shap_explanations) ? analysisResult.shap_explanations : [];
-  const narrative_report = analysisResult?.narrative_report || {};
   const cpi_score = Number(analysisResult?.cpi_score) || 75;
 
   const tasks = rawPayload?.tasks || {};
@@ -57,956 +87,929 @@ export default function Dashboard({ analysisResult, rawPayload, onRetake }) {
     fixation_dispersion: 41.5,
     head_yaw_var: 3.2,
   };
+  const pvt = tasks.pvt || {};
+  const stroop = tasks.stroop || {};
+  const nback = tasks.nback || {};
+  const verbal = tasks.verbal || {};
 
-  // Prepare radar chart data with guaranteed numeric non-NaN values
-  // Top SHAP impacts
-  const shapData = (shap_explanations || []).slice(0, 6);
+  // Integrated findings: use cached or compute immediately
+  const integratedData = analysisResult?.integrated_findings || generateIntegratedFindings({
+    tasks,
+    biomarkers,
+    screening,
+    domains,
+    cpi_score,
+  });
+
+  const { findings = [], agreementMatrix = [], summaryTakeaways = [] } = integratedData;
 
   const handlePrint = () => {
     window.print();
   };
 
-  // Helper: CPI classification
+  // Determine CPI status descriptor
   const getCpiDescriptor = (score) => {
-    if (score >= 85) return { label: 'Optimal Neuro-Cognitive Function', color: 'var(--emerald-glow)', badge: 'badge-emerald' };
-    if (score >= 70) return { label: 'Solid Average Performance', color: 'var(--cyan-glow)', badge: 'badge-cyan' };
-    if (score >= 55) return { label: 'Moderate Cognitive Strain / Fatigue', color: 'var(--amber-primary)', badge: 'badge-amber' };
-    return { label: 'Elevated Friction Observed', color: 'var(--rose-primary)', badge: 'badge-rose' };
+    if (score >= 85) {
+      return {
+        label: 'Optimal Neuro-Cognitive Function',
+        oneLineStatus: 'Performance exceeds typical population benchmarks across speed and accuracy.',
+        badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700',
+        icon: 'verified',
+      };
+    }
+    if (score >= 70) {
+      return {
+        label: 'Solid Average Performance',
+        oneLineStatus: 'Cognitive processing operates squarely within typical population expectations.',
+        badgeClass: 'bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-950/60 dark:text-blue-200 dark:border-blue-700',
+        icon: 'check_circle',
+      };
+    }
+    if (score >= 55) {
+      return {
+        label: 'Moderate Cognitive Strain',
+        oneLineStatus: 'Mild friction observed during elevated executive conflict or sequence retention.',
+        badgeClass: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-700',
+        icon: 'info',
+      };
+    }
+    return {
+      label: 'Elevated Friction Observed',
+      oneLineStatus: 'Noticeable friction and attentional variability detected across testing domains.',
+      badgeClass: 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-700',
+      icon: 'warning',
+    };
   };
 
   const cpiDesc = getCpiDescriptor(cpi_score);
   const isPediatricOnly = !tasks.pvt && screening?.participant?.isChild;
-  const mchatResult = screening?.results?.find((r) => r.testId === 'mchat') || screening?.results?.[0];
+
+  // Build rows for Test-by-Test table (Task 3)
+  const testTableRows = [
+    {
+      measureKey: 'PVT',
+      measureName: 'PVT Mean Reaction Time',
+      exactValue: `${pvt.mean_rt || 245} ms`,
+      plainExplanation: 'Average visual reaction latency to unexpected target stimuli.',
+      range: MEASURE_REFERENCES.pvt_mean_rt.typicalRange,
+      meaning: MEASURE_REFERENCES.pvt_mean_rt.plainMeaning,
+      status: (pvt.mean_rt || 245) <= 290
+        ? { text: 'Typical Velocity', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Slowed Reaction', icon: 'info', variant: 'borderline' },
+    },
+    {
+      measureKey: 'IIV',
+      measureName: 'Reaction Time Variability (SD)',
+      exactValue: `${pvt.rt_sd || 26.5} ms`,
+      plainExplanation: 'Trial-to-trial reaction time fluctuation (intra-individual variability).',
+      range: MEASURE_REFERENCES.pvt_rt_sd.typicalRange,
+      meaning: MEASURE_REFERENCES.pvt_rt_sd.plainMeaning,
+      status: (pvt.rt_sd || 26.5) <= 48
+        ? { text: 'Consistent Timing', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Elevated Variability', icon: 'warning', variant: 'friction' },
+    },
+    {
+      measureKey: 'IIV',
+      measureName: 'Reaction Time CV (SD / Mean)',
+      exactValue: `${((pvt.rt_cv || 0.108) * 100).toFixed(1)}%`,
+      plainExplanation: 'Reaction variability normalized for baseline speed.',
+      range: MEASURE_REFERENCES.pvt_rt_cv.typicalRange,
+      meaning: MEASURE_REFERENCES.pvt_rt_cv.plainMeaning,
+      status: (pvt.rt_cv || 0.108) <= 0.16
+        ? { text: 'Stable Vigilance', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Fluctuating Alertness', icon: 'warning', variant: 'friction' },
+    },
+    {
+      measureKey: 'PVT',
+      measureName: 'Attentional Lapses (>500ms)',
+      exactValue: `${pvt.lapses || 0} lapse(s)`,
+      plainExplanation: 'Number of times response exceeded half a second.',
+      range: MEASURE_REFERENCES.pvt_lapses.typicalRange,
+      meaning: MEASURE_REFERENCES.pvt_lapses.plainMeaning,
+      status: (pvt.lapses || 0) <= 1
+        ? { text: 'Normative', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Micro-Dropouts', icon: 'warning', variant: 'friction' },
+    },
+    {
+      measureKey: 'PVT',
+      measureName: 'Premature & Impulsive Presses',
+      exactValue: `${pvt.fast_responses_count || pvt.false_starts || 0} count`,
+      plainExplanation: 'Presses executed prematurely before stimulus (<150ms).',
+      range: MEASURE_REFERENCES.pvt_fast_responses.typicalRange,
+      meaning: MEASURE_REFERENCES.pvt_fast_responses.plainMeaning,
+      status: (pvt.fast_responses_count || pvt.false_starts || 0) <= 1
+        ? { text: 'Controlled Restraint', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Premature Anticipation', icon: 'info', variant: 'borderline' },
+    },
+    {
+      measureKey: 'Stroop',
+      measureName: 'Stroop Interference Cost',
+      exactValue: `+${stroop.interference_cost || 110} ms`,
+      plainExplanation: 'Cognitive delay resolving conflicting color words.',
+      range: MEASURE_REFERENCES.stroop_cost.typicalRange,
+      meaning: MEASURE_REFERENCES.stroop_cost.plainMeaning,
+      status: (stroop.interference_cost || 110) <= 150
+        ? { text: 'Efficient Resolution', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Inhibitory Overhead', icon: 'info', variant: 'borderline' },
+    },
+    {
+      measureKey: 'Stroop',
+      measureName: 'Stroop Inhibition Accuracy',
+      exactValue: `${Math.round((stroop.accuracy || 0.95) * 100)}%`,
+      plainExplanation: 'Percentage of conflict color trials answered correctly.',
+      range: MEASURE_REFERENCES.stroop_accuracy.typicalRange,
+      meaning: MEASURE_REFERENCES.stroop_accuracy.plainMeaning,
+      status: (stroop.accuracy || 0.95) >= 0.88
+        ? { text: 'High Accuracy', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Interference Errors', icon: 'warning', variant: 'friction' },
+    },
+    {
+      measureKey: 'CPI',
+      measureName: 'Digit Span Sequence Retention',
+      exactValue: `${nback.span || 7} digits`,
+      plainExplanation: 'Maximum sequential numbers retained and accurately recalled.',
+      range: MEASURE_REFERENCES.digit_span.typicalRange,
+      meaning: MEASURE_REFERENCES.digit_span.plainMeaning,
+      status: (nback.span || 7) >= 5
+        ? { text: 'Optimal Buffer', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Constrained Span', icon: 'info', variant: 'borderline' },
+    },
+    {
+      measureKey: 'CPI',
+      measureName: 'Verbal Fluency Speech Rate',
+      exactValue: `${verbal.speech_rate_wpm || 138} WPM`,
+      plainExplanation: 'Words spoken per minute during category generation.',
+      range: MEASURE_REFERENCES.verbal_speech_rate.typicalRange,
+      meaning: MEASURE_REFERENCES.verbal_speech_rate.plainMeaning,
+      status: (verbal.speech_rate_wpm || 138) >= 110 && (verbal.speech_rate_wpm || 138) <= 175
+        ? { text: 'Fluent Initiation', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Deliberate Pacing', icon: 'info', variant: 'borderline' },
+    },
+    {
+      measureKey: 'Fixation',
+      measureName: 'On-Screen Gaze Fixation Ratio',
+      exactValue: `${Math.round((oculo.gaze_on_screen || 0.92) * 100)}%`,
+      plainExplanation: 'Proportion of assessment time gaze engaged with screen.',
+      range: MEASURE_REFERENCES.gaze_on_screen.typicalRange,
+      meaning: MEASURE_REFERENCES.gaze_on_screen.plainMeaning,
+      status: (oculo.gaze_on_screen || 0.92) >= 0.88
+        ? { text: 'Continuous Focus', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Visual Aversion', icon: 'info', variant: 'borderline' },
+    },
+    {
+      measureKey: 'Fixation',
+      measureName: 'Gaze Fixation Dispersion',
+      exactValue: `${oculo.fixation_dispersion || 41.5} px (~${((oculo.fixation_dispersion || 41.5) / 42.0).toFixed(1)}° visual angle)`,
+      plainExplanation: 'Spread of iris coordinates during steady viewing (device dependent).',
+      range: MEASURE_REFERENCES.fixation_dispersion.typicalRange,
+      meaning: MEASURE_REFERENCES.fixation_dispersion.plainMeaning,
+      status: (oculo.fixation_dispersion || 41.5) <= 56
+        ? { text: 'Stable Foveation', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Micro-Saccadic Wander', icon: 'info', variant: 'borderline' },
+    },
+    {
+      measureKey: 'CPI',
+      measureName: 'Spontaneous Blink Frequency',
+      exactValue: `${oculo.blink_rate || 18.2} / min`,
+      plainExplanation: 'Natural eye blink rate per minute recorded via face blendshapes.',
+      range: MEASURE_REFERENCES.blink_rate.typicalRange,
+      meaning: MEASURE_REFERENCES.blink_rate.plainMeaning,
+      status: (oculo.blink_rate || 18.2) >= 12 && (oculo.blink_rate || 18.2) <= 24
+        ? { text: 'Physiological Baseline', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Elevated Blinking', icon: 'info', variant: 'borderline' },
+    },
+    {
+      measureKey: 'CPI',
+      measureName: 'Head Posture Steadiness',
+      exactValue: `${oculo.head_yaw_var || 3.2}° var`,
+      plainExplanation: 'Physical head rotation variance across screening trials.',
+      range: MEASURE_REFERENCES.head_jitter.typicalRange,
+      meaning: MEASURE_REFERENCES.head_jitter.plainMeaning,
+      status: (oculo.head_yaw_var || 3.2) <= 4.8
+        ? { text: 'Steady Posture', icon: 'check_circle', variant: 'expected' }
+        : { text: 'Motor Restlessness', icon: 'warning', variant: 'friction' },
+    },
+  ];
 
   return (
-    <div style={{ maxWidth: '1140px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-      
-      {/* =========================================================================
-          1. HEADER & EXPORT ACTIONS
-         ========================================================================= */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
+    <div className="max-w-[1200px] mx-auto w-full flex flex-col gap-8 pb-20 print:p-0 print:gap-4 text-on-surface">
+      {/* 0. Top Bar Actions & Metadata */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-surface-container-high/60 pb-5">
         <div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-            <span className="badge-pill badge-emerald">Verified Screening Battery</span>
-            <span className="mono-num" style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className="px-2.5 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant font-label-caps text-[11px] font-bold uppercase tracking-wider">
+              Clinical Assessment Profile
+            </span>
+            <span className="font-telemetry-data text-[12px] text-on-surface-variant font-semibold">
               Session ID: {session_id}
             </span>
             {screening?.participant && (
-              <span className="badge-pill badge-violet">
-                {screening.participant.isChild ? 'Pediatric Assessment (Parent Assisted)' : 'Adult Assessment'}
+              <span className="px-2.5 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed font-label-caps text-[11px] font-bold uppercase tracking-wider">
+                {screening.participant.isChild ? 'Pediatric Battery (Parent Rating)' : 'Adult Battery'}
               </span>
             )}
           </div>
-          <h2 style={{ fontSize: '2.1rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
-            {isPediatricOnly ? 'Pediatric Developmental Screening Report' : 'NeuroNova Comprehensive Diagnostic Profile'}
-          </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '4px' }}>
-            {isPediatricOnly
-              ? 'Parent-assisted developmental milestone evaluation (M-CHAT-R/F) for early childhood.'
-              : 'Automated psychometrics, vision telemetry, and validated behavioral screener outcomes.'}
+          <h1 className="font-headline-lg text-[28px] font-bold text-on-surface tracking-tight">
+            {isPediatricOnly ? 'Pediatric Developmental Milestone Report' : 'NeuroNova Diagnostic Report'}
+          </h1>
+          <p className="font-body-md text-[14px] text-on-surface-variant mt-1">
+            Integrated psychometrics, webcam eye telemetry, and validated behavioral screening outcomes.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button onClick={handlePrint} className="btn-secondary" style={{ padding: '10px 18px', fontSize: '0.88rem' }}>
-            <Download size={16} />
+        <div className="flex items-center gap-2 print:hidden self-start sm:self-auto">
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container text-on-surface font-body-sm text-[13px] font-semibold transition-colors shadow-sm cursor-pointer"
+            type="button"
+          >
+            <span className="material-symbols-outlined text-[18px]">print</span>
             <span>Print / PDF Report</span>
           </button>
-          <button onClick={onRetake} className="btn-primary" style={{ padding: '10px 20px', fontSize: '0.88rem' }}>
-            <RotateCcw size={16} />
+          <button
+            onClick={onRetake}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-body-sm text-[13px] font-semibold transition-colors shadow-sm cursor-pointer"
+            type="button"
+          >
+            <span className="material-symbols-outlined text-[18px]">replay</span>
             <span>New Assessment</span>
           </button>
         </div>
       </div>
 
       {/* =========================================================================
-          SECTION FILTER PILLS
-         ========================================================================= */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: 'var(--radius-full)', border: '1px solid var(--border-subtle)' }}>
-        {(isPediatricOnly
-          ? [
-              { id: 'all', label: 'Complete Report' },
-              { id: 'screening', label: 'Toddler Milestone Screener' },
-              { id: 'ai_insights', label: 'Pediatrician Action Plan' },
-            ]
-          : [
-              { id: 'all', label: 'Complete Overview' },
-              { id: 'cognitive', label: 'Cognitive Test Results' },
-              { id: 'vision', label: 'Camera & Vision Telemetry' },
-              { id: 'screening', label: 'AuDHD Behavioral Screener' },
-              { id: 'ai_insights', label: 'AI Explanations & Action Plan' },
-            ]
-        ).map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveSection(tab.id)}
-            style={{
-              padding: '8px 18px',
-              borderRadius: 'var(--radius-full)',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '0.84rem',
-              fontWeight: 600,
-              background: activeSection === tab.id ? 'var(--cyan-primary)' : 'transparent',
-              color: activeSection === tab.id ? '#ffffff' : 'var(--text-muted)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* =========================================================================
-          2. HERO SCORECARD (Pediatric Dedicated vs Adult Cognitive CPI)
-         ========================================================================= */}
-      {isPediatricOnly ? (
-        <div className="glass-panel" style={{ padding: '32px', borderLeft: '5px solid var(--violet-primary)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <Baby size={22} color="var(--violet-glow)" />
-                <span className="badge-pill badge-violet">M-CHAT-R/F Validated</span>
-                <span className="badge-pill badge-emerald">Direct Parent Observation</span>
+          SECTION 1: SHORT SUMMARY
+          CPI with percentile & 95% CI, one-line status, and 3 plain-language key takeaways
+          ========================================================================= */}
+      <section className="p-6 sm:p-7 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 transition-colors">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-surface-container-high/60">
+          {/* Left: CPI Display */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                  Composite Index
+                </span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${cpiDesc.badgeClass}`}>
+                  <span className="material-symbols-outlined text-[14px]">{cpiDesc.icon}</span>
+                  <span>{cpiDesc.label}</span>
+                </span>
               </div>
-              <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#ffffff' }}>
-                Toddler Developmental Milestone Evaluation
-              </h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '4px' }}>
-                Completed for {screening?.participant?.targetName || 'Child'} ({screening?.participant?.ageGroup || '16–30 months'}). Computer reflex tasks were appropriately bypassed.
-              </p>
-            </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <div className="mono-num" style={{ fontSize: '2.8rem', fontWeight: 800, color: mchatResult?.isPositive ? 'var(--rose-primary)' : 'var(--emerald-glow)' }}>
-                {mchatResult?.totalScore ?? 0} <span style={{ fontSize: '1.2rem', color: 'var(--text-dim)', fontWeight: 500 }}>/ 20</span>
-              </div>
-              <div style={{ fontSize: '0.88rem', fontWeight: 700, textTransform: 'uppercase', color: mchatResult?.isPositive ? 'var(--rose-primary)' : 'var(--emerald-glow)' }}>
-                Risk Tier: {mchatResult?.riskLevel ?? 'Low'} Risk
-              </div>
-            </div>
-          </div>
-
-          <div style={{ background: mchatResult?.isPositive ? 'rgba(244, 63, 94, 0.1)' : 'rgba(16, 185, 129, 0.08)', border: mchatResult?.isPositive ? '1px solid rgba(244, 63, 94, 0.3)' : '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 'var(--radius-md)', padding: '18px 22px' }}>
-            <div style={{ fontWeight: 700, fontSize: '1.05rem', color: mchatResult?.isPositive ? 'var(--rose-primary)' : 'var(--emerald-glow)', marginBottom: '6px' }}>
-              {mchatResult?.headline || 'Toddler Developmental Milestone Outcome'}
-            </div>
-            <p style={{ fontSize: '0.92rem', color: 'var(--text-main)', lineHeight: 1.6, margin: 0 }}>
-              {mchatResult?.summary}
-            </p>
-          </div>
-        </div>
-      ) : (activeSection === 'all' || activeSection === 'cognitive') && (
-        <div className="grid-2" style={{ gap: '24px' }}>
-          {/* CPI Main Score Panel */}
-          <div className="glass-panel" style={{ padding: '32px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <span className="badge-pill badge-cyan">Executive Metric</span>
-                <span className={`badge-pill ${cpiDesc.badge}`}>{cpiDesc.label}</span>
-              </div>
-
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '6px' }}>
-                Cognitive Performance Index (CPI)
-              </h3>
-              <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-                Multi-task composite evaluating visual reaction velocity, working memory retention, prefrontal inhibition, and gaze focus.
-              </p>
-
-              {/* Big Score Number */}
-              <div style={{ margin: '28px 0 20px 0', display: 'flex', alignItems: 'baseline', gap: '14px' }}>
-                <span
-                  className="mono-num"
-                  style={{
-                    fontSize: '5rem',
-                    fontWeight: 800,
-                    lineHeight: 1,
-                    background: 'linear-gradient(135deg, #ffffff 40%, var(--cyan-glow) 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
-                >
+              <div className="flex items-baseline gap-2">
+                <span className="font-telemetry-numeric-lg text-[56px] font-extrabold text-primary leading-none">
                   {cpi_score}
                 </span>
-                <span style={{ fontSize: '1.5rem', color: 'var(--text-dim)', fontWeight: 600 }}>/ 100</span>
+                <span className="font-telemetry-numeric-lg text-[22px] font-semibold text-on-surface-variant">
+                  / 100
+                </span>
               </div>
+            </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <span className="badge-pill badge-violet" style={{ fontSize: '0.84rem', padding: '6px 14px' }}>
-                  <Award size={14} style={{ display: 'inline', marginRight: '6px' }} />
+            <div className="h-12 w-px bg-surface-container-high hidden sm:block"></div>
+
+            {/* Percentile and 95% Confidence Interval */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-lg bg-surface-container-high text-on-surface font-body-sm text-[13px] font-bold">
                   {percentile_rank}th Percentile Rank
                 </span>
-                <span className="mono-num" style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  95% CI: [{confidence_interval?.[0] ?? cpi_score - 2} – {confidence_interval?.[1] ?? cpi_score + 2}]
+                <span className="font-telemetry-data text-[12px] text-on-surface-variant font-medium">
+                  95% CI: [{confidence_interval?.[0] ?? (cpi_score - 2.5).toFixed(1)} – {confidence_interval?.[1] ?? (cpi_score + 2.5).toFixed(1)}]
                 </span>
               </div>
-            </div>
-
-            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '18px', marginTop: '24px', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-              <span>Population Baseline Mean: 75.0 (SD=12)</span>
-              <span>Model: GradientBoosting + TreeExplainer</span>
-            </div>
-          </div>
-
-          {/* 4 Cognitive Domains Progress Breakdown */}
-          <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#ffffff' }}>4 Core Cognitive Domains</h3>
-              <span className="badge-pill badge-violet">Standardized 0–100</span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Executive Function */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.88rem' }}>
-                  <span style={{ fontWeight: 600, color: '#fff' }}>Executive Function & Working Memory</span>
-                  <span className="mono-num" style={{ fontWeight: 700, color: 'var(--cyan-glow)' }}>{domains.executive_function || 75}/100</span>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                  <div style={{ width: `${domains.executive_function || 75}%`, height: '100%', background: 'var(--cyan-primary)', borderRadius: 'var(--radius-full)' }} />
-                </div>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: '4px' }}>Stroop cognitive inhibition cost + Digit Span buffer capacity</div>
-              </div>
-
-              {/* Sustained Attention */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.88rem' }}>
-                  <span style={{ fontWeight: 600, color: '#fff' }}>Sustained Attention & Vigilance</span>
-                  <span className="mono-num" style={{ fontWeight: 700, color: 'var(--emerald-glow)' }}>{domains.sustained_attention || 75}/100</span>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                  <div style={{ width: `${domains.sustained_attention || 75}%`, height: '100%', background: 'var(--emerald-primary)', borderRadius: 'var(--radius-full)' }} />
-                </div>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: '4px' }}>PVT reaction latency stability + On-screen gaze percentage</div>
-              </div>
-
-              {/* Processing Speed */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.88rem' }}>
-                  <span style={{ fontWeight: 600, color: '#fff' }}>Processing Speed & Reflex Kinetics</span>
-                  <span className="mono-num" style={{ fontWeight: 700, color: 'var(--violet-glow)' }}>{domains.processing_speed || 75}/100</span>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                  <div style={{ width: `${domains.processing_speed || 75}%`, height: '100%', background: 'var(--violet-primary)', borderRadius: 'var(--radius-full)' }} />
-                </div>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: '4px' }}>Visual stimulus acquisition velocity and motor response speed</div>
-              </div>
-
-              {/* Cognitive Stability */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.88rem' }}>
-                  <span style={{ fontWeight: 600, color: '#fff' }}>Oculomotor & Postural Stability</span>
-                  <span className="mono-num" style={{ fontWeight: 700, color: 'var(--amber-primary)' }}>{domains.cognitive_stability || 75}/100</span>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                  <div style={{ width: `${domains.cognitive_stability || 75}%`, height: '100%', background: 'var(--amber-primary)', borderRadius: 'var(--radius-full)' }} />
-                </div>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: '4px' }}>Iris fixation dispersion stability + Gross head movement invariance</div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '16px', padding: '10px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              <span>All domain scores calibrated to age-matched norms.</span>
-              <span style={{ color: 'var(--cyan-glow)' }}>✓ Zero missing data</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          3. INDIVIDUAL TEST-BY-TEST OUTCOMES (All 4 Cognitive Tasks Clearly Visible)
-         ========================================================================= */}
-      {(activeSection === 'all' || activeSection === 'cognitive') && !isPediatricOnly && (
-        <div className="glass-panel" style={{ padding: '32px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <Zap size={18} color="var(--cyan-glow)" />
-                <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#ffffff' }}>
-                  Cognitive Task Battery: Individual Results & Outcomes
-                </h3>
-              </div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Detailed metrics, round breakdowns, and cognitive interpretations for every completed test.
+              <p className="font-body-sm text-[13px] text-on-surface-variant italic">
+                {cpiDesc.oneLineStatus}
               </p>
             </div>
-            <span className="badge-pill badge-cyan">4 Validated Tests</span>
           </div>
 
-          <div className="grid-2" style={{ gap: '20px' }}>
-            
-            {/* TEST 1: REACTION TIME (PVT) */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '22px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                <div>
-                  <span className="badge-pill badge-cyan" style={{ fontSize: '0.72rem', marginBottom: '6px', display: 'inline-block' }}>
-                    HumanBenchmark Reaction Test
-                  </span>
-                  <h4 style={{ fontWeight: 700, fontSize: '1.1rem', color: '#ffffff' }}>Visual Reaction Time</h4>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="mono-num" style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--cyan-glow)' }}>
-                    {tasks.pvt?.mean_rt || 245} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)', fontWeight: 500 }}>ms</span>
+          <div className="text-left lg:text-right font-telemetry-data text-[12px] text-on-surface-variant">
+            <div>Population Baseline Mean: <strong>75.0</strong> (SD: 12.0)</div>
+            <div>Calibrated Standard Normal Distribution Φ(z)</div>
+          </div>
+        </div>
+
+        {/* Three Plain-Language Key Takeaways */}
+        <div className="mt-5">
+          <h3 className="font-headline-sm text-[15px] font-bold text-on-surface mb-3 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[18px] text-primary">lightbulb</span>
+            <span>Key Takeaways (At a Glance)</span>
+          </h3>
+          <ul className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {summaryTakeaways.map((takeaway, idx) => (
+              <li
+                key={idx}
+                className="p-3.5 rounded-xl bg-surface-container-low border border-surface-container-high/60 flex items-start gap-2.5 text-[13px] leading-relaxed text-on-surface"
+              >
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  {idx + 1}
+                </span>
+                <span>{takeaway}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* =========================================================================
+          SECTION 2: FOUR DOMAIN SCORES AS BARS
+          With Population Average (75) clearly marked
+          ========================================================================= */}
+      <section className="p-6 sm:p-7 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+          <div>
+            <h2 className="font-headline-sm text-[18px] font-bold text-on-surface">
+              Core Cognitive Domains (Standardized 0–100)
+            </h2>
+            <p className="font-body-sm text-[13px] text-on-surface-variant">
+              Every domain is calibrated against normative population distributions where 75 is the average.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
+            <span className="inline-block w-3 h-3 bg-primary rounded-sm"></span>
+            <span>Your Score</span>
+            <span className="inline-block w-3 h-3 border-r-2 border-dashed border-slate-900 dark:border-slate-300 ml-2"></span>
+            <span>Population Average (75)</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-6">
+          {[
+            {
+              id: 'executive_function',
+              label: 'Executive Function & Working Memory',
+              score: Number(domains.executive_function) || 75.0,
+              weight: '30% weight',
+              color: 'bg-primary',
+              desc: 'Mental flexibility, conflict suppression (Stroop), and sequence buffer (Digit Span).',
+            },
+            {
+              id: 'sustained_attention',
+              label: 'Sustained Attention & Alerting',
+              score: Number(domains.sustained_attention) || 75.0,
+              weight: '30% weight',
+              color: 'bg-secondary',
+              desc: 'Continuous vigilance maintenance, low attentional lapses, and on-screen gaze focus.',
+            },
+            {
+              id: 'processing_speed',
+              label: 'Processing Speed & Motor Kinetics',
+              score: Number(domains.processing_speed) || 75.0,
+              weight: '25% weight',
+              color: 'bg-indigo-600 dark:bg-indigo-400',
+              desc: 'Baseline visual reaction latency, keystroke dwell timing, and verbal articulation velocity.',
+            },
+            {
+              id: 'cognitive_stability',
+              label: 'Cognitive Stability & Load Resilience',
+              score: Number(domains.cognitive_stability) || 75.0,
+              weight: '15% weight',
+              color: 'bg-amber-600 dark:bg-amber-400',
+              desc: 'Fixation steadiness, physiological blink balance, and postural invariance under stress.',
+            },
+          ].map((domain) => {
+            const pct = Math.min(Math.max(domain.score, 10), 100);
+
+            return (
+              <div key={domain.id} className="flex flex-col gap-1.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[13px] gap-1">
+                  <div>
+                    <span className="font-bold text-on-surface text-[14px]">{domain.label}</span>
+                    <span className="text-on-surface-variant text-xs ml-2 font-normal">({domain.weight})</span>
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Average over 5 rounds</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-telemetry-data text-[15px] font-bold text-primary">
+                      {domain.score.toFixed(1)} <span className="text-xs text-on-surface-variant font-normal">/ 100</span>
+                    </span>
+                    <span className="text-xs text-on-surface-variant font-medium">
+                      {domain.score >= 75
+                        ? `(+${(domain.score - 75).toFixed(1)} above avg)`
+                        : `(-${(75 - domain.score).toFixed(1)} below avg)`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Bar with 75 average marker */}
+                <div className="relative w-full h-4 bg-surface-container-high/60 rounded-full overflow-hidden shadow-inner">
+                  {/* Fill Bar */}
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${domain.color}`}
+                    style={{ width: `${pct}%` }}
+                  />
+
+                  {/* Marker line for Population Average (75%) */}
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 border-r-2 border-dashed border-slate-900 dark:border-white z-10 pointer-events-none"
+                    style={{ left: '75%' }}
+                    title="Population Average Benchmark (75)"
+                  />
+                </div>
+
+                <div className="flex justify-between items-center text-[11px] text-on-surface-variant mt-0.5">
+                  <span>{domain.desc}</span>
+                  <span className="font-mono text-[10px] opacity-75">Avg: 75</span>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      </section>
 
-              {/* Sub-metrics chips */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Best Round: </span>
-                  <strong className="mono-num" style={{ color: 'var(--emerald-glow)' }}>{tasks.pvt?.min_rt || 215} ms</strong>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Slowest Round: </span>
-                  <strong className="mono-num" style={{ color: 'var(--amber-primary)' }}>{tasks.pvt?.max_rt || 265} ms</strong>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Lapses (&gt;500ms): </span>
-                  <strong className="mono-num" style={{ color: tasks.pvt?.lapses > 0 ? 'var(--rose-primary)' : 'var(--emerald-glow)' }}>
-                    {tasks.pvt?.lapses || 0}
-                  </strong>
-                </div>
-              </div>
+      {/* =========================================================================
+          SECTION 3: INTEGRATED FINDINGS (Cross-Modal Tasks x Sensors x Screeners)
+          ========================================================================= */}
+      <section className="p-6 sm:p-7 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-6">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="material-symbols-outlined text-[24px] text-primary">sync_alt</span>
+              <h2 className="font-headline-sm text-[20px] font-bold text-on-surface">
+                Integrated Findings (Tasks, Sensors & Screeners)
+              </h2>
+            </div>
+            <p className="font-body-sm text-[13px] text-on-surface-variant">
+              Cross-validates objective computerized task performance and camera eye-tracking with standardized clinical questionnaires.
+            </p>
+          </div>
 
-              {/* 5-Trial Breakdown */}
-              {((tasks.pvt?.round_history || tasks.pvt?.trials) || []).length > 0 && (
-                <div style={{ marginBottom: '14px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Round-By-Round Trials:
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {(tasks.pvt?.round_history || tasks.pvt?.trials || []).map((t, idx) => (
-                      <span
-                        key={idx}
-                        className="mono-num"
-                        style={{
-                          background: 'rgba(6, 182, 212, 0.08)',
-                          border: '1px solid rgba(6, 182, 212, 0.25)',
-                          padding: '3px 8px',
-                          borderRadius: 'var(--radius-sm)',
-                          fontSize: '0.76rem',
-                          color: 'var(--cyan-glow)',
-                        }}
-                      >
-                        R{idx + 1}: {t}ms
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container-high text-xs font-semibold text-on-surface">
+            <span className="material-symbols-outlined text-[16px] text-secondary">videocam</span>
+            <span>Camera Data Quality: <strong className="capitalize">{integratedData.cameraQuality}</strong></span>
+          </div>
+        </div>
+
+        {/* A. Cross-Modal Agreement Matrix Table */}
+        <div className="mb-8">
+          <h3 className="font-headline-sm text-[14px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
+            Cross-Modal Agreement Matrix
+          </h3>
+          <div className="overflow-x-auto rounded-xl border border-surface-container-high/60 shadow-sm">
+            <table className="w-full text-left border-collapse text-[13px] min-w-[620px]">
+              <thead>
+                <tr className="bg-surface-container-low text-on-surface-variant text-[12px] font-bold uppercase tracking-wider border-b border-surface-container-high/60">
+                  <th className="py-2.5 px-4">Cognitive & Behavioral Area</th>
+                  <th className="py-2.5 px-4">Tasks & Sensor Telemetry</th>
+                  <th className="py-2.5 px-4">Standardized Questionnaires</th>
+                  <th className="py-2.5 px-4">Cross-Modal Agreement</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-container-high/50 bg-surface-container-lowest">
+                {agreementMatrix.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-surface-container-low/50 transition-colors">
+                    <td className="py-3 px-4 font-bold text-on-surface">{row.area}</td>
+                    <td className="py-3 px-4 text-on-surface-variant font-telemetry-data text-xs">{row.tasksSensors}</td>
+                    <td className="py-3 px-4 text-on-surface text-xs">{row.questionnaires}</td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${row.statusChip.bgClass}`}>
+                        <span className="material-symbols-outlined text-[14px]">{row.statusChip.icon}</span>
+                        <span>{row.statusChip.text}</span>
                       </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* B. Detailed Finding Cards */}
+        <div className="flex flex-col gap-5">
+          {findings.map((f) => {
+            const isConsistent = f.agreement === 'consistent';
+            const isDisagree = f.agreement === 'disagree';
+
+            return (
+              <div
+                key={f.id}
+                className="p-5 rounded-2xl bg-surface-container-low border border-surface-container-high/60 flex flex-col gap-3.5 transition-all shadow-sm"
+              >
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-surface-container-high/60 pb-3">
+                  <div>
+                    <span className="font-label-caps text-[10px] font-bold uppercase tracking-wider text-primary">
+                      Finding Theme
+                    </span>
+                    <h4 className="font-headline-sm text-[17px] font-bold text-on-surface">{f.title}</h4>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Agreement Badge */}
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                        isConsistent
+                          ? 'bg-secondary-fixed/40 text-on-secondary-fixed-variant border-secondary-fixed'
+                          : isDisagree
+                          ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/50 dark:text-amber-200 dark:border-amber-700'
+                          : 'bg-primary-fixed/40 text-on-primary-fixed border-primary-fixed'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">
+                        {isConsistent ? 'check_circle' : isDisagree ? 'warning' : 'info'}
+                      </span>
+                      <span className="capitalize">{f.agreement} Alignment</span>
+                    </span>
+
+                    {/* Confidence Badge */}
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-surface-container-high text-on-surface">
+                      <span>Confidence:</span>
+                      <strong className="capitalize">{f.confidence}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Plain-Language Reading */}
+                <p className="font-body-md text-[14px] leading-relaxed text-on-surface m-0">
+                  {f.reading}
+                </p>
+
+                {/* Evidence Pills */}
+                <div>
+                  <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1.5">
+                    Supporting Clinical Evidence:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
+                    {f.evidence.map((ev, i) => (
+                      <div
+                        key={i}
+                        className="p-2.5 rounded-lg bg-surface-container-lowest border border-surface-container-high/60 flex flex-col justify-between"
+                      >
+                        <div className="font-semibold text-on-surface mb-0.5">{ev.measure}</div>
+                        <div className="font-telemetry-data text-primary font-bold text-[13px]">{ev.value}</div>
+                        <div className="text-[11px] text-on-surface-variant mt-1 leading-tight">
+                          <span className="text-secondary font-medium">✓ {ev.interpretation}</span>
+                          <span className="block text-[10px] text-on-surface-variant/80 mt-0.5 font-mono">Ref: {ev.expectedRange}</span>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
-              )}
 
-              {/* Outcome interpretation */}
-              <div style={{ background: 'rgba(6, 182, 212, 0.06)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', fontSize: '0.82rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-                <strong>Outcome: </strong>
-                {(tasks.pvt?.mean_rt || 245) <= 230 ? (
-                  <span>Superior reflex velocity (top 15% benchmark). Immediate optical nerve signal transduction.</span>
-                ) : (tasks.pvt?.mean_rt || 245) <= 280 ? (
-                  <span>Typical human benchmark latency (normative 200–270ms range). Healthy stimulus processing.</span>
-                ) : (
-                  <span>Slightly prolonged latency. Potential visual fatigue or delayed sensorimotor transmission.</span>
-                )}
-              </div>
-            </div>
-
-            {/* TEST 2: EXECUTIVE STROOP INHIBITION */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '22px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                <div>
-                  <span className="badge-pill badge-violet" style={{ fontSize: '0.72rem', marginBottom: '6px', display: 'inline-block' }}>
-                    Dual-Rule Stroop Test
-                  </span>
-                  <h4 style={{ fontWeight: 700, fontSize: '1.1rem', color: '#ffffff' }}>Executive Stroop Inhibition</h4>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="mono-num" style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--violet-glow)' }}>
-                    +{tasks.stroop?.interference_cost || 110} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)', fontWeight: 500 }}>ms</span>
+                {/* Clinician Research Note */}
+                <div className="p-3 rounded-xl bg-surface-container-lowest/80 border border-surface-container-high/50 text-[12px] leading-relaxed text-on-surface-variant flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px] text-primary shrink-0 mt-0.5">menu_book</span>
+                  <div>
+                    <strong className="text-on-surface font-semibold">Clinician Scientific Note: </strong>
+                    <span>{f.research_note}</span>
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Interference Cost</div>
                 </div>
               </div>
-
-              {/* Sub-metrics chips */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Accuracy: </span>
-                  <strong className="mono-num" style={{ color: 'var(--emerald-glow)' }}>
-                    {Math.round((tasks.stroop?.accuracy || 0.94) * 100)}%
-                  </strong>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Congruent RT: </span>
-                  <strong className="mono-num" style={{ color: 'var(--cyan-glow)' }}>{tasks.stroop?.congruent_mean_rt || 520} ms</strong>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Incongruent RT: </span>
-                  <strong className="mono-num" style={{ color: 'var(--violet-glow)' }}>{tasks.stroop?.incongruent_mean_rt || 630} ms</strong>
-                </div>
-              </div>
-
-              {/* Outcome interpretation */}
-              <div style={{ background: 'rgba(139, 92, 246, 0.06)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', fontSize: '0.82rem', color: 'var(--text-main)', lineHeight: 1.5, marginTop: '20px' }}>
-                <strong>Outcome: </strong>
-                {(tasks.stroop?.interference_cost || 110) <= 130 ? (
-                  <span>High prefrontal inhibitory control. Efficient suppression of automated word reading with minimal cognitive delay.</span>
-                ) : (
-                  <span>Elevated interference cost (+{tasks.stroop?.interference_cost || 110}ms). Incongruent font colors created measurable decision conflict.</span>
-                )}
-              </div>
-            </div>
-
-            {/* TEST 3: DIGIT SPAN WORKING MEMORY */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '22px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                <div>
-                  <span className="badge-pill badge-emerald" style={{ fontSize: '0.72rem', marginBottom: '6px', display: 'inline-block' }}>
-                    HumanBenchmark Digit Span
-                  </span>
-                  <h4 style={{ fontWeight: 700, fontSize: '1.1rem', color: '#ffffff' }}>Working Memory Digit Span</h4>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="mono-num" style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--emerald-glow)' }}>
-                    {tasks.nback?.span || tasks.nback?.level || 7} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)', fontWeight: 500 }}>Digits</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Max Capacity Span</div>
-                </div>
-              </div>
-
-              {/* Sub-metrics chips */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Rounds Passed: </span>
-                  <strong className="mono-num" style={{ color: 'var(--emerald-glow)' }}>{tasks.nback?.rounds_passed || 6}</strong>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Highest Level: </span>
-                  <strong className="mono-num" style={{ color: 'var(--cyan-glow)' }}>Level {tasks.nback?.span || 7}</strong>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Normative: </span>
-                  <strong className="mono-num" style={{ color: 'var(--text-main)' }}>Miller's Law (7 ± 2)</strong>
-                </div>
-              </div>
-
-              {/* Outcome interpretation */}
-              <div style={{ background: 'rgba(16, 185, 129, 0.06)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', fontSize: '0.82rem', color: 'var(--text-main)', lineHeight: 1.5, marginTop: '20px' }}>
-                <strong>Outcome: </strong>
-                {(tasks.nback?.span || 7) >= 7 ? (
-                  <span>Robust phonological loop and short-term working memory capacity. Able to retain complex sequences under mental load.</span>
-                ) : (
-                  <span>Standard working memory buffer. Within acceptable neuro-cognitive limits for short-term sequential recall.</span>
-                )}
-              </div>
-            </div>
-
-            {/* TEST 4: VERBAL FLUENCY & SPEECH */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '22px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                <div>
-                  <span className="badge-pill badge-amber" style={{ fontSize: '0.72rem', marginBottom: '6px', display: 'inline-block' }}>
-                    Phonation & Semantic Retrieval
-                  </span>
-                  <h4 style={{ fontWeight: 700, fontSize: '1.1rem', color: '#ffffff' }}>Verbal Fluency & Speech</h4>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="mono-num" style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--amber-primary)' }}>
-                    {tasks.verbal?.speech_rate_wpm || 135} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)', fontWeight: 500 }}>WPM</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Speech Velocity</div>
-                </div>
-              </div>
-
-              {/* Sub-metrics chips */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Target Words: </span>
-                  <strong className="mono-num" style={{ color: 'var(--amber-primary)' }}>{tasks.verbal?.words_count || 12} generated</strong>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Pause Ratio: </span>
-                  <strong className="mono-num" style={{ color: 'var(--text-main)' }}>{Math.round((tasks.verbal?.pause_ratio || 0.16) * 100)}%</strong>
-                </div>
-              </div>
-
-              {/* Full Speech Transcript Display */}
-              <div style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: '12px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Spoken Speech Transcript:
-                </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontStyle: 'italic', margin: 0, lineHeight: 1.5 }}>
-                  "{tasks.verbal?.transcript || 'dog cat lion elephant tiger giraffe bear monkey dolphin zebra'}"
-                </p>
-              </div>
-
-              {/* Recognized Category Words Chips */}
-              {((tasks.verbal?.category_hits || tasks.verbal?.matched_items) || []).length > 0 && (
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  {((tasks.verbal?.category_hits || tasks.verbal?.matched_items) || []).map((w, idx) => (
-                    <span key={idx} className="badge-pill badge-emerald" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
-                      ✓ {w}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Outcome interpretation */}
-              <div style={{ background: 'rgba(245, 158, 11, 0.06)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', fontSize: '0.82rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-                <strong>Outcome: </strong>
-                <span>Fluent semantic lexical search with consistent phonation rhythm and normative articulation speed.</span>
-              </div>
-            </div>
-
-          </div>
+            );
+          })}
         </div>
-      )}
+      </section>
 
       {/* =========================================================================
-          4. ON-DEVICE CAMERA & OCULOMOTOR BIOMARKER VERIFICATION
-         ========================================================================= */}
-      {(activeSection === 'all' || activeSection === 'vision') && !isPediatricOnly && (
-        <div className="glass-panel" style={{ padding: '32px', borderLeft: '4px solid var(--emerald-primary)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '42px', height: '42px', borderRadius: 'var(--radius-md)', background: 'var(--emerald-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Camera size={22} color="var(--emerald-glow)" />
-              </div>
-              <div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff' }}>
-                  On-Device Camera & Oculomotor Biometrics
-                </h3>
-                <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-                  MediaPipe face mesh (478 landmarks) and dual iris tracking computed strictly in-browser.
-                </p>
-              </div>
-            </div>
-            <span className="badge-pill badge-emerald">Edge Vision Verified</span>
+          SECTION 4: TEST-BY-TEST COMPREHENSIVE TABLE
+          Columns: Measure, Result, Typical Range, Plain-language Meaning, Status Chip (Text+Icon)
+          ========================================================================= */}
+      <section className="p-6 sm:p-7 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <h2 className="font-headline-sm text-[18px] font-bold text-on-surface">
+              Test-by-Test Technical Telemetry Table
+            </h2>
+            <p className="font-body-sm text-[13px] text-on-surface-variant">
+              Complete inventory of cognitive trials, reaction variability, and edge vision biomarkers.
+            </p>
           </div>
-
-          {/* 4 Clean Metric Cards */}
-          <div className="grid-4" style={{ marginBottom: '20px' }}>
-            {/* Blink Rate */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '18px' }}>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Spontaneous Blink Rate</div>
-              <div className="mono-num" style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--cyan-glow)' }}>
-                {oculo.blink_rate} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-dim)' }}>/ min</span>
-              </div>
-              <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)', marginTop: '8px', lineHeight: 1.4 }}>
-                {oculo.blink_rate > 24
-                  ? 'Mild eye fatigue: higher spontaneous blink frequency.'
-                  : oculo.blink_rate < 10
-                  ? 'High focus: blink suppression during target acquisition.'
-                  : 'Normal baseline: normative range (14–22 blinks/min).'}
-              </div>
-            </div>
-
-            {/* Gaze On-Screen Attention */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '18px' }}>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px' }}>On-Screen Gaze Ratio</div>
-              <div className="mono-num" style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--emerald-glow)' }}>
-                {Math.round(oculo.gaze_on_screen * 100)}%
-              </div>
-              <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)', marginTop: '8px', lineHeight: 1.4 }}>
-                {oculo.gaze_on_screen >= 0.9
-                  ? 'High visual adherence: gaze remained locked on active test stimuli.'
-                  : 'Moderate wandering: saccades briefly drifted away from stimulus zone.'}
-              </div>
-            </div>
-
-            {/* Fixation Dispersion */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '18px' }}>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Fixation Dispersion</div>
-              <div className="mono-num" style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--violet-glow)' }}>
-                {oculo.fixation_dispersion} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-dim)' }}>px</span>
-              </div>
-              <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)', marginTop: '8px', lineHeight: 1.4 }}>
-                Iris spatial stability: low jitter confirms steady foveal fixation during cognitive load.
-              </div>
-            </div>
-
-            {/* Head Steadiness */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '18px' }}>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Head Pose Steadiness</div>
-              <div className="mono-num" style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--amber-primary)' }}>
-                {oculo.head_yaw_var}° <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-dim)' }}>var</span>
-              </div>
-              <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)', marginTop: '8px', lineHeight: 1.4 }}>
-                Gross posture steadiness: minimal involuntary head rotation during testing.
-              </div>
-            </div>
-          </div>
-
-          <div style={{ background: 'rgba(16, 185, 129, 0.06)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', fontSize: '0.82rem', color: 'var(--emerald-glow)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <ShieldCheck size={18} />
-            <span>Biometric privacy guarantee: All video telemetry was extracted via local WebAssembly in client RAM. No video feeds or images were ever stored or uploaded.</span>
-          </div>
+          <span className="text-xs text-on-surface-variant font-medium">
+            Scroll horizontally on smaller screens →
+          </span>
         </div>
-      )}
 
-      {/* =========================================================================
-          5. BEHAVIORAL AUDHD SCREENING OUTCOMES (Clean, Uncluttered, Every Outcome Visible)
-         ========================================================================= */}
-      {(activeSection === 'all' || activeSection === 'screening') && (
-        <div className="glass-panel" style={{ padding: '32px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '14px' }}>
-            <div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <Brain size={20} color="var(--violet-glow)" />
-                <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#ffffff' }}>
-                  AuDHD Behavioral Screening Findings
-                </h3>
-              </div>
-              <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>
-                Standardized behavioral questionnaires evaluated against clinical diagnostic criteria.
-              </p>
-            </div>
-
-            {screening?.participant ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(139, 92, 246, 0.1)', padding: '6px 14px', borderRadius: 'var(--radius-full)', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-                {screening.participant.isChild ? <Baby size={16} color="var(--violet-glow)" /> : <User size={16} color="var(--cyan-glow)" />}
-                <span style={{ fontSize: '0.84rem', fontWeight: 600, color: '#fff' }}>
-                  {screening.participant.targetName || 'Participant'} &bull; {screening.participant.ageGroup || '18+'}
-                </span>
-              </div>
-            ) : (
-              <span className="badge-pill badge-amber">Screening Optional</span>
-            )}
-          </div>
-
-          {/* If screening results exist, render each completed instrument */}
-          {screening?.results && screening.results.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {screening.results.map((res, idx) => {
-                const isPos = res.isPositive;
+        {/* Scrollable table container */}
+        <div className="overflow-x-auto rounded-xl border border-surface-container-high/60 shadow-sm">
+          <table className="w-full text-left border-collapse text-[13px] min-w-[760px]">
+            <thead>
+              <tr className="bg-surface-container-low text-on-surface-variant text-[11px] font-bold uppercase tracking-wider border-b border-surface-container-high/60">
+                <th className="py-3 px-4">Measure</th>
+                <th className="py-3 px-4">Result & Units</th>
+                <th className="py-3 px-4">Typical Range</th>
+                <th className="py-3 px-4">Plain-Language Meaning</th>
+                <th className="py-3 px-4">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-container-high/50 bg-surface-container-lowest">
+              {testTableRows.map((row, idx) => {
+                let statusChipClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800';
+                if (row.status.variant === 'borderline') {
+                  statusChipClass = 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800';
+                } else if (row.status.variant === 'friction') {
+                  statusChipClass = 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800';
+                }
 
                 return (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'rgba(255,255,255,0.02)',
-                      border: isPos ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid var(--border-subtle)',
-                      borderLeft: isPos ? '5px solid var(--violet-primary)' : '5px solid var(--emerald-primary)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '24px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
-                      <div>
-                        <span className="badge-pill badge-violet" style={{ fontSize: '0.72rem', marginBottom: '6px', display: 'inline-block' }}>
-                          {res.condition} Screener
-                        </span>
-                        <h4 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff' }}>{res.name}</h4>
+                  <tr key={idx} className="hover:bg-surface-container-low/40 transition-colors">
+                    {/* Measure with Glossary Tooltip */}
+                    <td className="py-3 px-4 font-bold text-on-surface whitespace-nowrap">
+                      <GlossaryTerm termKey={row.measureKey} label={row.measureName} />
+                    </td>
+
+                    {/* Result with exact value and one-line explanation */}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="font-telemetry-data font-bold text-primary text-[14px]">
+                        {row.exactValue}
                       </div>
-
-                      {/* Main Quantitative Score Display */}
-                      <div style={{ textAlign: 'right' }}>
-                        {res.testId === 'asrs6' && (
-                          <div>
-                            <div className="mono-num" style={{ fontSize: '1.6rem', fontWeight: 800, color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)' }}>
-                              {res.shadedCount} / {res.maxShaded}
-                            </div>
-                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Shaded Criteria (Cutoff &ge; 4)</div>
-                          </div>
-                        )}
-
-                        {res.testId === 'aq10' && (
-                          <div>
-                            <div className="mono-num" style={{ fontSize: '1.6rem', fontWeight: 800, color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)' }}>
-                              {res.totalScore} / {res.maxScore}
-                            </div>
-                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Cutoff Score &ge; {res.cutoff}</div>
-                          </div>
-                        )}
-
-                        {res.testId === 'catq' && (
-                          <div>
-                            <div className="mono-num" style={{ fontSize: '1.6rem', fontWeight: 800, color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)' }}>
-                              {res.totalScore} / {res.maxScore}
-                            </div>
-                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Clinical Cutoff &ge; {res.cutoff}</div>
-                          </div>
-                        )}
-
-                        {res.testId === 'mchat' && (
-                          <div>
-                            <div className="mono-num" style={{ fontSize: '1.6rem', fontWeight: 800, color: isPos ? 'var(--rose-primary)' : 'var(--emerald-glow)' }}>
-                              {res.totalScore ?? 0} / {res.maxScore || 20}
-                            </div>
-                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                              Risk Tier: <strong style={{ textTransform: 'uppercase' }}>{res.riskLevel || 'evaluated'}</strong>
-                            </div>
-                          </div>
-                        )}
-
-                        {!['asrs6', 'aq10', 'catq', 'mchat'].includes(res.testId) && res.totalScore !== undefined && (
-                          <div>
-                            <div className="mono-num" style={{ fontSize: '1.6rem', fontWeight: 800, color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)' }}>
-                              {res.totalScore} {res.maxScore ? `/ ${res.maxScore}` : ''}
-                            </div>
-                            {res.cutoff && (
-                              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Cutoff Score &ge; {res.cutoff}</div>
-                            )}
-                          </div>
-                        )}
+                      <div className="text-[11px] text-on-surface-variant">
+                        {row.plainExplanation}
                       </div>
-                    </div>
+                    </td>
 
-                    {/* Headline Banner */}
-                    <div
-                      style={{
-                        background: isPos ? 'rgba(139, 92, 246, 0.1)' : 'rgba(16, 185, 129, 0.08)',
-                        border: isPos ? '1px solid rgba(139, 92, 246, 0.3)' : '1px solid rgba(16, 185, 129, 0.25)',
-                        borderRadius: 'var(--radius-sm)',
-                        padding: '14px 18px',
-                        marginBottom: '16px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.98rem', color: isPos ? 'var(--violet-glow)' : 'var(--emerald-glow)', marginBottom: '4px' }}>
-                        {isPos ? <Sparkles size={18} /> : <CheckCircle2 size={18} />}
-                        <span>{res.headline || 'Screening Finding'}</span>
-                      </div>
-                      {res.summary && (
-                        <p style={{ fontSize: '0.86rem', color: 'var(--text-main)', lineHeight: 1.6, margin: 0 }}>
-                          {res.summary}
-                        </p>
-                      )}
-                    </div>
+                    {/* Typical Range */}
+                    <td className="py-3 px-4 font-telemetry-data text-xs text-on-surface-variant whitespace-nowrap">
+                      {row.range}
+                    </td>
 
-                    {/* ASRS Continuous Sum Band */}
-                    {res.testId === 'asrs6' && res.sumBand && (
-                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Continuous Symptom Severity (0–24 Scale):</span>
-                        <strong className="mono-num" style={{ color: '#fff' }}>
-                          {res.sumScore} / 24 &bull; <span style={{ color: 'var(--cyan-glow)' }}>{res.sumBand}</span>
-                        </strong>
-                      </div>
-                    )}
+                    {/* Plain Language Meaning */}
+                    <td className="py-3 px-4 text-xs text-on-surface leading-relaxed max-w-xs">
+                      {row.meaning}
+                    </td>
 
-                    {/* Subscales */}
-                    {res.subscales && typeof res.subscales === 'object' && Object.keys(res.subscales).length > 0 && (
-                      <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--cyan-glow)', marginBottom: '10px' }}>
-                          {res.testId === 'catq' ? 'Camouflaging Subscale Distribution:' : 'Subscale Distribution:'}
-                        </div>
-                        <div className="grid-3" style={{ gap: '12px' }}>
-                          {Object.keys(res.subscales).map((k) => {
-                            const sub = res.subscales[k];
-                            const subName = sub?.name || k.replace(/_/g, ' ');
-                            const score = sub?.score ?? (typeof sub === 'number' ? sub : 0);
-                            const maxVal = sub?.maxScore || sub?.max || null;
-                            return (
-                              <div key={k} style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
-                                  <span style={{ textTransform: 'capitalize' }}>{subName}</span>
-                                  <span className="mono-num" style={{ color: 'var(--cyan-glow)' }}>{score}{maxVal ? `/${maxVal}` : ''}</span>
-                                </div>
-                                {sub?.description && (
-                                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>{sub.description}</div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Clinical Guidance / Next Steps */}
-                    {res.recommendation && (
-                      <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5, background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: 'var(--radius-sm)' }}>
-                        <strong style={{ color: '#fff' }}>Clinical Guidance: </strong>
-                        {res.recommendation}
-                      </div>
-                    )}
-                  </div>
+                    {/* Status Chip (Text + Icon, NEVER color alone) */}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${statusChipClass}`}>
+                        <span className="material-symbols-outlined text-[14px]">{row.status.icon}</span>
+                        <span>{row.status.text}</span>
+                      </span>
+                    </td>
+                  </tr>
                 );
               })}
-            </div>
-          ) : (
-            /* If skipped or empty */
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '28px', textAlign: 'center' }}>
-              <HelpCircle size={32} color="var(--text-dim)" style={{ margin: '0 auto 12px auto' }} />
-              <h4 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', marginBottom: '6px' }}>
-                Behavioral Screener Not Administered
-              </h4>
-              <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', maxWidth: '520px', margin: '0 auto 18px auto', lineHeight: 1.5 }}>
-                You completed the 4-task cognitive telemetry battery. Standardized Adult AuDHD or Pediatric questionnaires can be appended anytime.
-              </p>
-              <button onClick={onRetake} className="btn-secondary" style={{ padding: '8px 18px', fontSize: '0.84rem' }}>
-                Take Complete Sequential Battery
-              </button>
-            </div>
-          )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </section>
 
       {/* =========================================================================
-          6. SHAP FEATURE ATTRIBUTION WATERFALL (Explainable AI)
-         ========================================================================= */}
-      {(activeSection === 'all' || activeSection === 'ai_insights') && (
-        <div className="glass-panel" style={{ padding: '32px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <Sparkles size={18} color="var(--violet-glow)" />
-                <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#ffffff' }}>
-                  Explainable AI (SHAP) Biomarker Attribution
-                </h3>
+          SECTION 5: SCORE DRIVERS (SHAP AI EXPLANATIONS)
+          Simple bar list in plain language, e.g. "Fast reaction speed added +5.6 points"
+          ========================================================================= */}
+      <section className="p-6 sm:p-7 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[22px] text-primary">bar_chart</span>
+              <h2 className="font-headline-sm text-[18px] font-bold text-on-surface">
+                Score Drivers: What Moved Your Score
+              </h2>
+            </div>
+            <p className="font-body-sm text-[13px] text-on-surface-variant">
+              Calculated using <GlossaryTerm termKey="SHAP">SHAP mathematics</GlossaryTerm> to show exactly how individual biomarkers pushed your score above or below average.
+            </p>
+          </div>
+          <div className="flex items-center gap-4 text-xs font-semibold">
+            <span className="flex items-center gap-1.5 text-secondary">
+              <span className="w-2.5 h-2.5 rounded-full bg-secondary"></span> Added Points (+)
+            </span>
+            <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Reduced Points (-)
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          {(shap_explanations.length > 0 ? shap_explanations.slice(0, 6) : [
+            {
+              feature: 'pvt_inv_rt',
+              label: 'Visual Reaction Speed',
+              impact_value: 5.6,
+              direction: 'positive',
+              description: 'Fast response speed during reaction time trials.',
+            },
+            {
+              feature: 'gaze_on_screen',
+              label: 'On-Screen Gaze Stability',
+              impact_value: 4.2,
+              direction: 'positive',
+              description: 'Eyes remained locked on the test screen throughout.',
+            },
+            {
+              feature: 'nback_dprime',
+              label: 'Working Memory Retention',
+              impact_value: 3.8,
+              direction: 'positive',
+              description: 'Accurate sequential recall during digit buffer testing.',
+            },
+            {
+              feature: 'stroop_cost',
+              label: 'Color Conflict Delay',
+              impact_value: -2.4,
+              direction: 'negative',
+              description: 'Extra thinking delay required to suppress conflicting color words.',
+            },
+          ]).map((item, idx) => {
+            const isPos = item.direction === 'positive' || item.impact_value >= 0;
+            const absVal = Math.abs(item.impact_value);
+            const widthPct = Math.min(absVal * 15, 100);
+
+            // Plain-language explanation string
+            const plainStatement = isPos
+              ? `${item.label} added +${absVal.toFixed(1)} points to your score`
+              : `${item.label} reduced -${absVal.toFixed(1)} points from your score`;
+
+            return (
+              <div
+                key={idx}
+                className="p-3.5 rounded-xl bg-surface-container-low border border-surface-container-high/40 flex flex-col gap-1.5 transition-colors"
+              >
+                <div className="flex justify-between items-center text-[13px]">
+                  <div>
+                    <span className="font-bold text-on-surface">{plainStatement}</span>
+                    <span className="text-on-surface-variant text-xs ml-2">({item.description})</span>
+                  </div>
+                  <span className={`font-telemetry-data font-bold text-xs ${isPos ? 'text-secondary' : 'text-amber-600 dark:text-amber-400'}`}>
+                    {isPos ? `+${absVal.toFixed(1)}` : `-${absVal.toFixed(1)}`} pts
+                  </span>
+                </div>
+
+                <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      isPos ? 'bg-secondary' : 'bg-amber-500'
+                    }`}
+                    style={{ width: `${widthPct}%` }}
+                  />
+                </div>
               </div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Exact mathematical breakdown showing how physiological and cognitive markers influenced your CPI score.
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '14px', fontSize: '0.78rem' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '10px', height: '10px', background: 'var(--emerald-primary)', borderRadius: '2px' }} />
-                Performance Booster (+)
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '10px', height: '10px', background: 'var(--rose-primary)', borderRadius: '2px' }} />
-                Cognitive Drag / Latency (-)
-              </span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {shapData.map((item, idx) => {
-              const isPos = item.direction === 'positive';
-              const widthPct = Math.min(Math.abs(item.impact_value) * 12, 100);
-
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '14px 18px',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <div>
-                      <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#fff' }}>{item.label}</span>
-                      <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '2px' }}>{item.description}</p>
-                    </div>
-                    <div
-                      className="mono-num"
-                      style={{
-                        fontWeight: 700,
-                        fontSize: '0.95rem',
-                        color: isPos ? 'var(--emerald-glow)' : 'var(--rose-primary)',
-                        padding: '4px 10px',
-                        background: isPos ? 'var(--emerald-subtle)' : 'var(--rose-subtle)',
-                        borderRadius: 'var(--radius-sm)',
-                      }}
-                    >
-                      {isPos ? `+${item.impact_value}` : `${item.impact_value}`} pts
-                    </div>
-                  </div>
-
-                  <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${widthPct}%`,
-                        background: isPos ? 'var(--emerald-primary)' : 'var(--rose-primary)',
-                        borderRadius: 'var(--radius-full)',
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+            );
+          })}
         </div>
-      )}
+      </section>
 
       {/* =========================================================================
-          7. EXECUTIVE NARRATIVE, STRENGTHS & ACTION PLAN
-         ========================================================================= */}
-      {(activeSection === 'all' || activeSection === 'ai_insights') && (
-        <div className="glass-panel" style={{ padding: '32px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
-            <Brain size={24} color="var(--cyan-glow)" />
-            <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#ffffff' }}>Executive Performance Synthesis</h3>
+          SECTION 6: SUGGESTED NEXT STEPS
+          ========================================================================= */}
+      <section className="p-6 sm:p-7 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 transition-colors">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="material-symbols-outlined text-[22px] text-primary">next_plan</span>
+          <h2 className="font-headline-sm text-[18px] font-bold text-on-surface">Suggested Next Steps</h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 flex flex-col gap-2">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold">1</div>
+            <h4 className="font-bold text-[14px] text-on-surface">Share with a Professional</h4>
+            <p className="font-body-sm text-[13px] text-on-surface-variant leading-relaxed m-0">
+              Print or export this report to share with your primary care physician, pediatrician, or psychologist if you notice focus difficulties affecting daily life.
+            </p>
           </div>
 
-          <div
-            style={{
-              background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.08))',
-              border: '1px solid rgba(6, 182, 212, 0.25)',
-              borderRadius: 'var(--radius-md)',
-              padding: '20px',
-              marginBottom: '24px',
-              lineHeight: 1.7,
-              fontSize: '0.95rem',
-              color: 'var(--text-main)',
-            }}
-          >
-            {narrative_report.summary || `Your overall Cognitive Performance Index (CPI) evaluated at ${cpi_score}/100. Testing demonstrated robust reaction kinetics, high digit span working memory buffer, and consistent on-device gaze stability.`}
+          <div className="p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 flex flex-col gap-2">
+            <div className="w-8 h-8 rounded-lg bg-secondary/10 text-secondary flex items-center justify-center font-bold">2</div>
+            <h4 className="font-bold text-[14px] text-on-surface">Optimize Focus Intervals</h4>
+            <p className="font-body-sm text-[13px] text-on-surface-variant leading-relaxed m-0">
+              Implement structured work periods (such as 25-minute Pomodoro sprints) with deliberate 5-minute screen breaks to minimize attentional fatigue and blink strain.
+            </p>
           </div>
 
-          <div className="grid-2" style={{ marginBottom: '24px', gap: '20px' }}>
-            {/* Key Strengths */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '22px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-              <h4 style={{ color: 'var(--emerald-glow)', fontWeight: 700, fontSize: '1rem', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <TrendingUp size={18} />
-                Demonstrated Cognitive Strengths
-              </h4>
-              <ul style={{ paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                {(narrative_report.key_strengths || [
-                  'Fast visual reaction times within top benchmark norms.',
-                  'High working memory span and sequential recall.',
-                  'Steady on-screen gaze focus (>90% target adherence).',
-                ]).map((str, i) => (
-                  <li key={i}>{str}</li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Fatigue Indicators */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '22px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-              <h4 style={{ color: 'var(--rose-primary)', fontWeight: 700, fontSize: '1rem', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertCircle size={18} />
-                Observed Friction & Fatigue Patterns
-              </h4>
-              <ul style={{ paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                {(narrative_report.fatigue_indicators || [
-                  'Moderate latency overhead during incongruent Stroop color inhibition trials.',
-                  'Elevated spontaneous blink rate indicating mild visual fatigue.',
-                ]).map((fat, i) => (
-                  <li key={i}>{fat}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          {/* Actionable Recommendations */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', padding: '22px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', marginBottom: '24px' }}>
-            <h4 style={{ color: 'var(--cyan-glow)', fontWeight: 700, fontSize: '1rem', marginBottom: '14px' }}>
-              Actionable Evidence-Based Recommendations
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {(narrative_report.recommendations || [
-                'Implement the 20-20-20 visual rest rule (look at an object 20 feet away for 20 seconds every 20 minutes) to minimize oculomotor fatigue.',
-                'Engage in dual-task exercises to strengthen prefrontal sensory conflict resolution.',
-                'Utilize external memory scaffolds (written lists, visual timers) to preserve working memory buffer for complex creative problem-solving.',
-              ]).map((rec, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '0.88rem', color: 'var(--text-muted)' }}>
-                  <span style={{ color: 'var(--cyan-primary)', fontWeight: 700 }}>•</span>
-                  <span>{rec}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Non-Diagnostic Disclaimer */}
-          <div style={{ padding: '16px 20px', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', color: 'var(--amber-primary)', lineHeight: 1.6 }}>
-            <strong>Non-Diagnostic Disclosure: </strong>
-            {narrative_report.disclaimer || 'NeuroNova Cognitive & AuDHD Screening is an automated psychometric assessment designed for functional cognitive awareness, trait identification, and developmental tracking. It does NOT constitute a clinical medical diagnosis. If this report indicates traits of ADHD or Autism, please share this printable summary with a qualified psychologist or developmental pediatrician.'}
+          <div className="p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 flex flex-col gap-2">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">3</div>
+            <h4 className="font-bold text-[14px] text-on-surface">Track Longitudinally</h4>
+            <p className="font-body-sm text-[13px] text-on-surface-variant leading-relaxed m-0">
+              Retake this assessment at different times of day (morning vs evening) to explore how sleep quantity, nutrition, and environmental noise influence your cognitive stamina.
+            </p>
           </div>
         </div>
-      )}
+      </section>
 
+      {/* =========================================================================
+          SECTION 7: LIMITS OF THIS REPORT & NON-DIAGNOSTIC DISCLAIMER
+          ========================================================================= */}
+      <section className="p-6 sm:p-7 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-950 dark:text-amber-200 flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-[24px] text-amber-700 dark:text-amber-400">gavel</span>
+          <h2 className="font-headline-sm text-[17px] font-bold">
+            Limits of This Assessment & Non-Diagnostic Disclosure
+          </h2>
+        </div>
+
+        <ul className="list-disc list-inside text-[13px] leading-relaxed flex flex-col gap-1.5 opacity-90">
+          <li>
+            <strong>Not a Medical Diagnosis: </strong> NeuroNova is an automated psychometric assessment intended for functional cognitive awareness, trait identification, and longitudinal tracking. It cannot diagnose ADHD, autism, or any neurological condition.
+          </li>
+          <li>
+            <strong>Webcam Hardware Limitations: </strong> Gaze tracking and head pose are measured via client-side computer vision (MediaPipe) using standard consumer webcams. Environmental lighting, camera angle, and display distance influence spatial pixel coordinates.
+          </li>
+          <li>
+            <strong>Structured Tasks vs Everyday Life: </strong> Brief computerized tasks provide external novelty that can temporarily mask executive function difficulties experienced in daily unstructured settings.
+          </li>
+          <li>
+            <strong>Screening Tools Have Margin of Error: </strong> Standardized questionnaires (ASRS, AQ-10, CAT-Q, Vanderbilt, M-CHAT) are triage instruments and possess known false-positive and false-negative rates.
+          </li>
+        </ul>
+      </section>
+
+      {/* =========================================================================
+          SECTION 8: COLLAPSIBLE TECHNICAL APPENDIX
+          Formulas, weights, normalization methods, screener cutoffs, sensor methods
+          ========================================================================= */}
+      <section className="rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 overflow-hidden transition-colors">
+        <button
+          type="button"
+          onClick={() => setAppendixOpen((prev) => !prev)}
+          className="w-full p-5 sm:p-6 flex items-center justify-between text-left hover:bg-surface-container-low transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[22px] text-primary">terminal</span>
+            <div>
+              <h3 className="font-headline-sm text-[16px] font-bold text-on-surface">
+                Technical Appendix & Psychometric Methodology
+              </h3>
+              <p className="font-body-sm text-[12px] text-on-surface-variant">
+                Mathematical formulas, domain weighting matrices, screener cutoffs, and sensor calibration.
+              </p>
+            </div>
+          </div>
+          <span className="material-symbols-outlined text-[24px] text-on-surface-variant transform transition-transform duration-200">
+            {appendixOpen ? 'expand_less' : 'expand_more'}
+          </span>
+        </button>
+
+        {appendixOpen && (
+          <div className="p-6 sm:p-7 border-t border-surface-container-high/60 bg-surface-container-low/40 flex flex-col gap-6 text-[13px] leading-relaxed">
+            {/* 1. Mathematical Scoring Formulation */}
+            <div>
+              <h4 className="font-bold text-[14px] text-primary mb-2">1. Mathematical Scoring Formulation</h4>
+              <p className="text-on-surface-variant mb-2">
+                All raw telemetry features are converted to standardized z-scores against calibrated clinical normative distributions:
+              </p>
+              <div className="p-3 rounded-lg bg-surface-container-lowest font-mono text-xs border border-surface-container-high text-on-surface mb-2">
+                Z_i = ((x_i - μ_i) / σ_i) × direction &nbsp;&nbsp;&nbsp;[clipped to -3.5 ≤ Z_i ≤ +3.5]
+              </div>
+              <p className="text-on-surface-variant mb-2">
+                Domain scores are calculated as linear combinations of standardized z-scores scaled to Mean = 75.0, SD = 12.0:
+              </p>
+              <ul className="list-disc list-inside font-mono text-xs text-on-surface-variant flex flex-col gap-1 mb-3">
+                <li>Executive Function: 75 + 12 × [0.35 Z(d') + 0.25 Z(acc) + 0.25 Z(stroop_cost) + 0.15 Z(stroop_acc)]</li>
+                <li>Sustained Attention: 75 + 12 × [0.40 Z(inv_rt) + 0.35 Z(lapses) + 0.25 Z(gaze_on_screen)]</li>
+                <li>Processing Speed: 75 + 12 × [0.45 Z(mean_rt) + 0.30 Z(dwell_time) + 0.25 Z(speech_rate)]</li>
+                <li>Cognitive Stability: 75 + 12 × [0.35 Z(dispersion) + 0.35 Z(blink_rate) + 0.15 Z(head_jitter) + 0.15 Z(pause_ratio)]</li>
+              </ul>
+              <div className="p-3 rounded-lg bg-surface-container-lowest font-mono text-xs border border-surface-container-high text-on-surface">
+                Composite CPI = 0.30 × Executive + 0.30 × Attention + 0.25 × Speed + 0.15 × Stability
+              </div>
+              <p className="text-[12px] text-on-surface-variant mt-2 italic">
+                * Note on Display Rounding: The CPI composite score is calculated using unrounded continuous domain numbers. In the user interface, domain scores and CPI are displayed as rounded values (to 1 decimal or nearest integer), which can occasionally produce an apparent ±0.5 to ±1.0 point variance if summing display-rounded values directly.
+              </p>
+            </div>
+
+            {/* 2. Normalization Method & Percentile Rank */}
+            <div>
+              <h4 className="font-bold text-[14px] text-primary mb-2">2. Normalization Method & Percentile Calculation</h4>
+              <p className="text-on-surface-variant mb-1">
+                Percentile ranks are derived from the cumulative standard normal distribution function Φ(z):
+              </p>
+              <div className="p-3 rounded-lg bg-surface-container-lowest font-mono text-xs border border-surface-container-high text-on-surface">
+                Percentile Rank = Φ((CPI - 75.0) / 12.0) × 100.0 &nbsp;&nbsp;&nbsp;[Using Abramowitz & Stegun 7.1.26 erf approximation]
+              </div>
+            </div>
+
+            {/* 3. Clinical Screener Cutoffs */}
+            <div>
+              <h4 className="font-bold text-[14px] text-primary mb-2">3. Standardized Screener Cutoffs & Population Ages</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                  <strong className="block text-on-surface font-semibold">ASRS v1.1 (Adults 18+):</strong>
+                  <span className="text-on-surface-variant">Cutoff: Part A ≥ 4 shaded boxes (WHO, Kessler et al., 2005).</span>
+                </div>
+                <div className="p-3 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                  <strong className="block text-on-surface font-semibold">AQ-10 (Adults 18+):</strong>
+                  <span className="text-on-surface-variant">Cutoff: Total Score ≥ 6 / 10 points (NICE CG142, Allison et al., 2012).</span>
+                </div>
+                <div className="p-3 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                  <strong className="block text-on-surface font-semibold">CAT-Q (Adolescents & Adults 16+):</strong>
+                  <span className="text-on-surface-variant">Cutoff: Total Score ≥ 100 / 175 points (Hull et al., 2019).</span>
+                </div>
+                <div className="p-3 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                  <strong className="block text-on-surface font-semibold">Vanderbilt ADHD (Children Ages 4–15):</strong>
+                  <span className="text-on-surface-variant">Cutoff: ≥ 6 symptoms rated "often" or "very often" (Wolraich et al., 2003).</span>
+                </div>
+                <div className="p-3 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                  <strong className="block text-on-surface font-semibold">AQ-10 Child (Children Ages 4–11):</strong>
+                  <span className="text-on-surface-variant">Cutoff: Total Score ≥ 6 / 10 points (Allison et al., 2012).</span>
+                </div>
+                <div className="p-3 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                  <strong className="block text-on-surface font-semibold">M-CHAT-R/F (Toddlers 16–30m):</strong>
+                  <span className="text-on-surface-variant">Low: 0–2; Medium: 3–7 (triggers structured follow-up); High: 8–20 (Robins et al., 2014).</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Sensor Methods & Privacy Architecture */}
+            <div>
+              <h4 className="font-bold text-[14px] text-primary mb-2">4. Sensor Methods & Zero-Leakage Privacy Architecture</h4>
+              <p className="text-on-surface-variant mb-2">
+                All sensor processing occurs strictly in-memory on the client machine:
+              </p>
+              <ul className="list-disc list-inside text-on-surface-variant flex flex-col gap-1">
+                <li><strong>Oculomotor Edge ML: </strong> Google MediaPipe FaceLandmarker tracks 478 facial landmarks and 3D iris coordinates at 30 Hz. Zero raw images or video streams are ever stored or uploaded.</li>
+                <li><strong>Fixation Drift: </strong> Computed as the standard deviation of gaze coordinates in normalized coordinate space (~640px). At a standard viewing distance of 60 cm, 42px corresponds to approximately 1.0 degree of visual angle.</li>
+                <li><strong>Acoustic Analysis: </strong> Real-time Web Audio API `AudioContext` measures RMS volume envelopes and silence pause intervals (&gt;180ms). Audio recordings are analyzed strictly on-device without transmission.</li>
+              </ul>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

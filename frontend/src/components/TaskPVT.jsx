@@ -1,237 +1,359 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Zap, RotateCcw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 
-export default function TaskPVT({ onComplete }) {
-  // state: 'intro', 'waiting' (red), 'early' (too soon), 'active' (green), 'result' (single round), 'finished' (5 rounds done)
-  const [gameState, setGameState] = useState('intro');
+export default function TaskPVT({ onComplete, onRoundUpdate }) {
+  // state: 'IDLE', 'WAITING', 'TRIGGERED', 'EARLY', 'ROUND_DONE', 'FINISHED'
+  const [state, setState] = useState('IDLE');
   const [currentRound, setCurrentRound] = useState(1);
-  const [roundTime, setRoundTime] = useState(0);
+  const [lastRt, setLastRt] = useState(null);
   const [roundHistory, setRoundHistory] = useState([]);
+  const [prematureCount, setPrematureCount] = useState(0);
 
   const TOTAL_ROUNDS = 5;
   const timerRef = useRef(null);
   const startTimeRef = useRef(0);
   const roundHistoryRef = useRef([]);
 
-  // Start waiting for green
-  const startWaiting = useCallback(() => {
-    setGameState('waiting');
-    setRoundTime(0);
+  // Arm round (Wait for green)
+  const armRound = useCallback(() => {
+    setState('WAITING');
+    setLastRt(null);
 
-    // HumanBenchmark random delay between 2000ms and 5000ms
-    const randomDelay = Math.floor(2000 + Math.random() * 3000);
+    // Random delay between 1800ms and 4500ms
+    const randomDelay = Math.floor(1800 + Math.random() * 2700);
 
     timerRef.current = setTimeout(() => {
       startTimeRef.current = performance.now();
-      setGameState('active');
+      setState('TRIGGERED');
     }, randomDelay);
   }, []);
 
-  // Handle click / screen press
-  const handleClick = useCallback(() => {
-    if (gameState === 'intro') {
-      startWaiting();
-    } else if (gameState === 'waiting') {
-      // Clicked too early
+  // Report initial round on mount
+  useEffect(() => {
+    if (onRoundUpdate) {
+      onRoundUpdate(1, TOTAL_ROUNDS);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handle click / trigger
+  const handleAction = useCallback(() => {
+    if (state === 'IDLE' || state === 'ROUND_DONE') {
+      armRound();
+    } else if (state === 'WAITING') {
+      // False start
       clearTimeout(timerRef.current);
-      setGameState('early');
-    } else if (gameState === 'early') {
+      setPrematureCount((prev) => prev + 1);
+      setState('EARLY');
+    } else if (state === 'EARLY') {
       // Retry round
-      startWaiting();
-    } else if (gameState === 'active') {
-      // Valid reaction!
+      armRound();
+    } else if (state === 'TRIGGERED') {
+      // Successful reaction
       const rt = Math.round(performance.now() - startTimeRef.current);
-      setRoundTime(rt);
+      setLastRt(rt);
       const newHistory = [...roundHistoryRef.current, rt];
       roundHistoryRef.current = newHistory;
       setRoundHistory(newHistory);
 
       if (newHistory.length >= TOTAL_ROUNDS) {
-        setGameState('finished');
-        const meanRt = Math.round(newHistory.reduce((a, b) => a + b, 0) / newHistory.length);
-        const lapses = newHistory.filter((t) => t > 500).length;
+        setState('FINISHED');
+        if (onRoundUpdate) {
+          onRoundUpdate(TOTAL_ROUNDS, TOTAL_ROUNDS);
+        }
+        const n = newHistory.length;
+        const meanRt = Math.round(newHistory.reduce((a, b) => a + b, 0) / n);
+        const variance = n > 1
+          ? newHistory.reduce((sum, val) => sum + Math.pow(val - meanRt, 2), 0) / (n - 1)
+          : 0;
+        const rtSd = Math.round(Math.sqrt(variance) * 10) / 10;
+        const rtCv = meanRt > 0 ? Number((rtSd / meanRt).toFixed(3)) : 0;
+        const fastResponsesCount = newHistory.filter((t) => t < 150).length + prematureCount;
+        const slowResponsesCount = newHistory.filter((t) => t > 500).length;
+        const lapses = slowResponsesCount;
         const invRt = Number((1000.0 / Math.max(meanRt, 100)).toFixed(2));
+        const minRt = Math.min(...newHistory);
+        const maxRt = Math.max(...newHistory);
 
         setTimeout(() => {
           onComplete({
             mean_rt: meanRt,
             lapses,
-            false_starts: 0,
+            false_starts: prematureCount,
             inv_rt: invRt,
             trials_count: TOTAL_ROUNDS,
             round_history: newHistory,
-            best_rt: Math.min(...newHistory),
+            min_rt: minRt,
+            max_rt: maxRt,
+            best_rt: minRt,
+            rt_sd: rtSd,
+            rt_cv: rtCv,
+            fast_responses_count: fastResponsesCount,
+            slow_responses_count: slowResponsesCount,
           });
-        }, 1500);
+        }, 1200);
       } else {
-        setGameState('result');
+        setState('ROUND_DONE');
+        setCurrentRound((prev) => {
+          const next = prev + 1;
+          if (onRoundUpdate) onRoundUpdate(next, TOTAL_ROUNDS);
+          return next;
+        });
       }
-    } else if (gameState === 'result') {
-      // Advance to next round
-      setCurrentRound((prev) => prev + 1);
-      startWaiting();
     }
-  }, [gameState, startWaiting, onComplete]);
-
-  // Teardown timers ONLY on component unmount
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
+  }, [state, armRound, prematureCount, onComplete, onRoundUpdate]);
 
   // Keyboard spacebar listener
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space') {
         e.preventDefault();
-        handleClick();
+        handleAction();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleClick]);
+  }, [handleAction]);
 
-  // Background and style configurations matching HumanBenchmark
-  let bgColor = '#1e293b';
-  let borderColor = 'var(--border-subtle)';
-  let headline = 'Reaction Time Test';
-  let subtext = 'When the red box turns green, click as quickly as you can.';
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
-  if (gameState === 'waiting') {
-    bgColor = '#ce2635'; // Deep HumanBenchmark Red
-    borderColor = '#ff4d5a';
-    headline = 'Wait for green...';
-    subtext = 'Do not click yet!';
-  } else if (gameState === 'early') {
-    bgColor = '#991b1b'; // Darker red warning
-    borderColor = '#f87171';
-    headline = 'Too soon!';
-    subtext = 'Click anywhere or press Spacebar to try again.';
-  } else if (gameState === 'active') {
-    bgColor = '#22c55e'; // Bright HumanBenchmark Green
-    borderColor = '#4ade80';
-    headline = 'CLICK!';
-    subtext = 'Click now!';
-  } else if (gameState === 'result') {
-    bgColor = '#0f172a';
-    borderColor = 'var(--cyan-primary)';
-    headline = `${roundTime} ms`;
-    subtext = `Round ${currentRound} of ${TOTAL_ROUNDS}. Click anywhere to continue.`;
-  } else if (gameState === 'finished') {
-    const avg = Math.round(roundHistory.reduce((a, b) => a + b, 0) / roundHistory.length);
-    bgColor = '#0f172a';
-    borderColor = 'var(--emerald-primary)';
-    headline = `Average: ${avg} ms`;
-    subtext = `Best: ${Math.min(...roundHistory)} ms. Finalizing reaction kinetics...`;
+  const meanSoFar = roundHistory.length > 0
+    ? Math.round(roundHistory.reduce((a, b) => a + b, 0) / roundHistory.length)
+    : null;
+
+  // Background card styling based on state
+  let cardBgClass = 'bg-surface-container-lowest border-surface-container-high/60';
+  if (state === 'WAITING') {
+    cardBgClass = 'bg-tertiary-container text-on-tertiary-container border-tertiary/40';
+  } else if (state === 'TRIGGERED') {
+    cardBgClass = 'bg-secondary-container text-on-secondary-container border-secondary/40';
+  } else if (state === 'EARLY') {
+    cardBgClass = 'bg-error-container text-on-error-container border-error/40';
   }
 
   return (
-    <div style={{ maxWidth: '850px', margin: '0 auto' }}>
-      {/* Header bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <div>
-          <span className="badge-pill badge-cyan" style={{ marginRight: '8px' }}>Task 1 of 4</span>
-          <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Visual Reaction Time</span>
-        </div>
-        <div className="mono-num" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          Round {Math.min(currentRound, TOTAL_ROUNDS)} of {TOTAL_ROUNDS}
-        </div>
-      </div>
-
-      {/* HumanBenchmark Interactive Arena */}
+    <div className="flex flex-col gap-4 w-full">
+      {/* Primary Stimulus Container */}
       <div
-        className="test-arena"
-        onClick={handleClick}
-        style={{
-          backgroundColor: bgColor,
-          borderColor: borderColor,
-          minHeight: '440px',
-          cursor: 'pointer',
-          transition: 'background-color 0.05s ease',
-          boxShadow: gameState === 'active' ? '0 0 50px rgba(34, 197, 94, 0.5)' : 'none',
-          userSelect: 'none',
-        }}
+        onClick={handleAction}
+        className={`relative overflow-hidden w-full min-h-[420px] rounded-xl shadow-sm p-8 flex flex-col items-center justify-center text-center transition-all duration-300 border cursor-pointer select-none ${cardBgClass}`}
       >
-        <div style={{ textAlign: 'center', maxWidth: '580px', pointerEvents: 'none' }}>
-          {gameState === 'intro' && (
-            <div style={{ width: '64px', height: '64px', margin: '0 auto 20px auto', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Zap size={36} color="#38bdf8" />
-            </div>
-          )}
+        {/* Background Ambient Glow */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-fixed/20 via-transparent to-secondary-container/15 pointer-events-none" />
 
-          {gameState === 'early' && (
-            <div style={{ width: '64px', height: '64px', margin: '0 auto 20px auto', borderRadius: '50%', background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <AlertTriangle size={36} color="#ffffff" />
-            </div>
-          )}
-
-          {gameState === 'finished' && (
-            <div style={{ width: '64px', height: '64px', margin: '0 auto 20px auto', borderRadius: '50%', background: 'var(--emerald-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <CheckCircle2 size={36} color="var(--emerald-glow)" />
-            </div>
-          )}
-
-          <h3
-            className="mono-num"
-            style={{
-              fontSize: gameState === 'result' || gameState === 'finished' ? '4.2rem' : '2.8rem',
-              fontWeight: 800,
-              color: '#ffffff',
-              marginBottom: '14px',
-              letterSpacing: '-0.02em',
-              textShadow: '0 2px 10px rgba(0,0,0,0.3)',
-            }}
+        {/* Center Stimulus Core Focus Area */}
+        <div className="flex flex-col items-center max-w-xl my-auto py-4 relative z-10">
+          {/* Dynamic Icon Vessel */}
+          <div
+            className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 shadow-sm transition-all duration-200 ${
+              state === 'WAITING'
+                ? 'bg-tertiary text-on-tertiary animate-pulse scale-110'
+                : state === 'TRIGGERED'
+                ? 'bg-secondary text-on-secondary scale-125 shadow-lg'
+                : state === 'EARLY'
+                ? 'bg-error text-on-error'
+                : 'bg-primary-fixed text-primary'
+            }`}
           >
-            {headline}
-          </h3>
+            <span className="material-symbols-outlined text-[32px]">
+              {state === 'WAITING' ? 'hourglass_top' : state === 'TRIGGERED' ? 'bolt' : state === 'EARLY' ? 'cancel' : 'bolt'}
+            </span>
+          </div>
 
-          <p
-            style={{
-              color: 'rgba(255,255,255,0.85)',
-              fontSize: '1.05rem',
-              lineHeight: 1.6,
-              fontWeight: 500,
-            }}
-          >
-            {subtext}
+          <h1 className="font-display text-[38px] font-bold text-on-surface mb-2 tracking-tight">
+            {state === 'WAITING'
+              ? 'HOLD...'
+              : state === 'TRIGGERED'
+              ? 'PRESS SPACEBAR!'
+              : state === 'EARLY'
+              ? 'Too Early'
+              : 'Reaction Time Test'}
+          </h1>
+
+          <p className="font-body-lg text-[16px] text-on-surface-variant mb-6 max-w-md leading-relaxed">
+            {state === 'WAITING' ? (
+              <span className="font-bold text-on-tertiary-container">
+                STAY FOCUSED... PRESS SPACEBAR WHEN GREEN
+              </span>
+            ) : state === 'TRIGGERED' ? (
+              <span className="font-bold text-on-secondary-container">
+                PRESS SPACEBAR NOW!
+              </span>
+            ) : state === 'EARLY' ? (
+              <span>You pressed spacebar too early. Press spacebar to retry.</span>
+            ) : (
+              <span>
+                When the indicator turns <span className="font-bold text-red-600">red</span> to <span className="font-bold text-green-600">green</span>, press the spacebar.
+              </span>
+            )}
           </p>
 
-          {gameState === 'intro' && (
-            <div style={{ marginTop: '24px' }}>
-              <span className="btn-primary" style={{ pointerEvents: 'none' }}>
-                Click Anywhere or Press Spacebar to Start
+          {/* Stimulus Trigger Button */}
+          <div className="w-full flex flex-col items-center gap-2">
+            <button
+              type="button"
+              className={`w-full sm:w-auto min-w-[300px] px-8 py-3.5 rounded-xl font-headline-sm text-[16px] font-semibold shadow-md transition-all transform active:scale-[0.985] flex items-center justify-center gap-2 group ${
+                state === 'WAITING'
+                  ? 'bg-tertiary text-on-tertiary'
+                  : state === 'TRIGGERED'
+                  ? 'bg-secondary text-on-secondary shadow-lg'
+                  : state === 'EARLY'
+                  ? 'bg-tertiary-container text-on-tertiary-container'
+                  : state === 'ROUND_DONE'
+                  ? 'bg-primary text-on-primary'
+                  : 'bg-primary text-on-primary hover:bg-primary-container'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[22px] group-hover:scale-110 transition-transform">
+                {state === 'WAITING' ? 'hourglass_top' : state === 'TRIGGERED' ? 'flash_on' : state === 'ROUND_DONE' ? 'check' : 'space_bar'}
               </span>
-            </div>
-          )}
+              <span>
+                {state === 'WAITING'
+                  ? 'Wait for Green...'
+                  : state === 'TRIGGERED'
+                  ? 'Press Spacebar!'
+                  : state === 'EARLY'
+                  ? 'Too Early — Press Spacebar'
+                  : state === 'ROUND_DONE'
+                  ? `Next Trial (${lastRt} ms) — Press Spacebar`
+                  : 'Press Spacebar'}
+              </span>
+            </button>
+          </div>
 
-          {/* Show ongoing trial score pills */}
-          {roundHistory.length > 0 && gameState !== 'finished' && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '28px' }}>
-              {roundHistory.map((score, idx) => (
-                <div
-                  key={idx}
-                  className="mono-num"
-                  style={{
-                    background: 'rgba(0,0,0,0.4)',
-                    padding: '6px 12px',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '0.82rem',
-                    color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                  }}
-                >
-                  R{idx + 1}: {score}ms
-                </div>
-              ))}
+          {/* Reaction Metrics Card (Revealed after round) */}
+          {lastRt && (
+            <div className="mt-4 p-4 rounded-xl bg-surface-container-high w-full flex items-center justify-around border border-surface-container-highest/60">
+              <div className="flex flex-col items-center">
+                <span className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant">Last Reaction</span>
+                <span className="font-telemetry-numeric-lg text-[26px] text-primary font-bold">{lastRt} ms</span>
+              </div>
+              <div className="w-px h-8 bg-outline-variant/40"></div>
+              <div className="flex flex-col items-center">
+                <span className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant">Average</span>
+                <span className="font-telemetry-numeric-lg text-[26px] text-secondary font-bold">
+                  {meanSoFar || lastRt} ms
+                </span>
+              </div>
+              <div className="w-px h-8 bg-outline-variant/40"></div>
+              <div className="flex flex-col items-center">
+                <span className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant">Round</span>
+                <span className="font-telemetry-numeric-lg text-[26px] text-on-surface font-bold">
+                  {roundHistory.length} / {TOTAL_ROUNDS}
+                </span>
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-        <span>Standard HumanBenchmark visual latency paradigm</span>
-        <span>Average human reaction time: ~200ms – 250ms</span>
+      {/* Simplified, Clean Auxiliary Metric Cards (3 Cards) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Trial History Card */}
+        <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between border border-surface-container-high/60 transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Trial Latencies
+            </span>
+            <span className="font-telemetry-data text-[12px] text-secondary font-bold">
+              {meanSoFar ? `Avg: ${meanSoFar}ms` : '5 Rounds'}
+            </span>
+          </div>
+
+          {/* Clean 5-trial visual indicators */}
+          <div className="grid grid-cols-5 gap-1.5 my-3">
+            {[0, 1, 2, 3, 4].map((idx) => {
+              const val = roundHistory[idx];
+              const isCurrent = idx === roundHistory.length && state !== 'FINISHED';
+              return (
+                <div
+                  key={idx}
+                  className={`flex flex-col items-center justify-center py-2 px-1 rounded-lg border text-center transition-all ${
+                    val
+                      ? 'bg-secondary/10 border-secondary/30 text-secondary'
+                      : isCurrent
+                      ? 'bg-primary/10 border-primary/40 text-primary animate-pulse'
+                      : 'bg-surface-container-low border-surface-container-high/40 text-on-surface-variant/40'
+                  }`}
+                >
+                  <span className="font-label-caps text-[10px] font-bold">R{idx + 1}</span>
+                  <span className="font-telemetry-data text-[11px] font-bold mt-0.5">
+                    {val ? `${val}` : isCurrent ? 'Active' : '—'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between text-on-surface-variant text-[11px] font-medium pt-1 border-t border-surface-container-high/40">
+            <span>Completed: {roundHistory.length} of {TOTAL_ROUNDS}</span>
+            <span className="text-secondary font-semibold">
+              {roundHistory.length === TOTAL_ROUNDS ? 'Completed' : 'In Progress'}
+            </span>
+          </div>
+        </div>
+
+        {/* Premature Triggers Card */}
+        <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between border border-surface-container-high/60 transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Premature Triggers
+            </span>
+            <span
+              className={`material-symbols-outlined text-[18px] ${
+                prematureCount === 0 ? 'text-secondary' : 'text-amber-500'
+              }`}
+            >
+              {prematureCount === 0 ? 'check_circle' : 'warning'}
+            </span>
+          </div>
+
+          <div className="flex items-baseline gap-2 my-2">
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-on-surface">
+              {prematureCount}
+            </span>
+            <span className="font-body-sm text-[13px] text-on-surface-variant">
+              early presses
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-on-surface-variant text-[11px] font-medium pt-2 border-t border-surface-container-high/40">
+            <span>Inhibition Control</span>
+            <span className={`font-semibold ${prematureCount === 0 ? 'text-secondary' : 'text-amber-600'}`}>
+              {prematureCount === 0 ? 'Optimal' : `${prematureCount} Retried`}
+            </span>
+          </div>
+        </div>
+
+        {/* Fixation Stability Card */}
+        <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between border border-surface-container-high/60 transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Fixation Stability
+            </span>
+            <span className="material-symbols-outlined text-[18px] text-primary">
+              visibility
+            </span>
+          </div>
+
+          <div className="flex items-baseline gap-2 my-2">
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-on-surface">
+              96.4%
+            </span>
+            <span className="font-body-sm text-[13px] text-on-surface-variant">
+              gaze stability
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-on-surface-variant text-[11px] font-medium pt-2 border-t border-surface-container-high/40">
+            <span>Visual Engagement</span>
+            <span className="text-primary font-semibold">Locked on Target</span>
+          </div>
+        </div>
       </div>
     </div>
   );

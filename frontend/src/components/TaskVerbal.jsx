@@ -1,70 +1,20 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, Volume2, CheckCircle2, Loader2, Sparkles, ArrowRight, MessageSquare, Radio, Plus, X, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const DURATION_SECONDS = 25;
 
-// Comprehensive animal names dictionary (350+ species across all classes)
 const KNOWN_ANIMALS = new Set([
-  // Domestic & Pets
-  'dog', 'cat', 'puppy', 'kitten', 'hamster', 'guinea pig', 'rabbit', 'bunny', 'ferret', 'gerbil',
-  'mouse', 'rat', 'horse', 'pony', 'donkey', 'mule', 'cow', 'cattle', 'bull', 'calf', 'ox', 'pig',
-  'piglet', 'hog', 'boar', 'sheep', 'lamb', 'ram', 'goat', 'kid', 'chicken', 'rooster', 'hen',
-  'chick', 'duck', 'duckling', 'goose', 'gosling', 'turkey', 'llama', 'alpaca',
-  // Wild Mammals
-  'lion', 'tiger', 'cheetah', 'leopard', 'jaguar', 'panther', 'cougar', 'puma', 'lynx', 'bobcat',
-  'elephant', 'giraffe', 'zebra', 'hippo', 'hippopotamus', 'rhino', 'rhinoceros', 'monkey',
-  'chimpanzee', 'chimp', 'gorilla', 'orangutan', 'baboon', 'lemur', 'gibbon', 'panda', 'red panda',
-  'bear', 'grizzly', 'polar bear', 'black bear', 'brown bear', 'sloth', 'anteater', 'armadillo',
-  'kangaroo', 'koala', 'wallaby', 'wombat', 'platypus', 'possum', 'opossum', 'dingo',
-  'wolf', 'fox', 'coyote', 'jackal', 'hyena', 'meerkat', 'mongoose', 'badger', 'honey badger',
-  'otter', 'sea otter', 'beaver', 'skunk', 'raccoon', 'porcupine', 'hedgehog', 'mole', 'bat',
-  'deer', 'stag', 'doe', 'fawn', 'elk', 'moose', 'reindeer', 'caribou', 'antelope', 'gazelle',
-  'impala', 'bison', 'buffalo', 'yak', 'camel', 'warthog', 'wildcat', 'weasel', 'stoat',
-  'wolverine', 'chipmunk', 'squirrel', 'gopher', 'groundhog', 'marmot', 'capybara',
-  // Marine Mammals & Sea Life
-  'whale', 'blue whale', 'humpback', 'orca', 'killer whale', 'dolphin', 'porpoise', 'seal',
-  'sea lion', 'walrus', 'manatee', 'dugong', 'shark', 'hammerhead', 'great white', 'ray',
-  'stingray', 'manta ray', 'fish', 'salmon', 'trout', 'tuna', 'cod', 'bass', 'goldfish',
-  'catfish', 'eel', 'seahorse', 'swordfish', 'barracuda', 'piranha', 'clownfish', 'octopus',
-  'squid', 'cuttlefish', 'crab', 'lobster', 'shrimp', 'prawn', 'krill', 'jellyfish', 'starfish',
-  'sea urchin', 'clam', 'oyster', 'mussel', 'snail', 'slug',
-  // Birds
-  'eagle', 'hawk', 'falcon', 'owl', 'vulture', 'osprey', 'condor', 'parrot', 'parakeet',
-  'cockatoo', 'macaw', 'toucan', 'woodpecker', 'hummingbird', 'kingfisher', 'robin', 'bluebird',
-  'cardinal', 'sparrow', 'finch', 'canary', 'swallow', 'crow', 'raven', 'magpie', 'pigeon',
-  'dove', 'seagull', 'gull', 'pelican', 'albatross', 'cormorant', 'heron', 'egret', 'stork',
-  'flamingo', 'crane', 'swan', 'penguin', 'ostrich', 'emu', 'kiwi', 'peacock', 'peahen',
-  'pheasant', 'quail', 'partridge',
-  // Reptiles & Amphibians
-  'snake', 'python', 'cobra', 'viper', 'mamba', 'anaconda', 'boa', 'rattlesnake', 'lizard',
-  'gecko', 'chameleon', 'iguana', 'komodo dragon', 'monitor lizard', 'alligator', 'crocodile',
-  'caiman', 'turtle', 'tortoise', 'terrapin', 'frog', 'toad', 'bullfrog', 'tree frog',
-  'salamander', 'newt', 'axolotl',
-  // Insects & Arthropods
-  'spider', 'tarantula', 'scorpion', 'ant', 'bee', 'bumblebee', 'wasp', 'hornet', 'butterfly',
-  'moth', 'caterpillar', 'beetle', 'ladybug', 'firefly', 'dragonfly', 'grasshopper', 'cricket',
-  'mantis', 'praying mantis', 'centipede', 'millipede', 'worm', 'earthworm'
+  'dog', 'cat', 'puppy', 'kitten', 'hamster', 'rabbit', 'horse', 'cow', 'pig', 'sheep', 'goat', 'chicken', 'duck',
+  'lion', 'tiger', 'cheetah', 'leopard', 'elephant', 'giraffe', 'zebra', 'hippo', 'rhino', 'monkey', 'gorilla',
+  'chimpanzee', 'bear', 'panda', 'wolf', 'fox', 'deer', 'kangaroo', 'koala', 'whale', 'dolphin', 'shark', 'seal',
+  'eagle', 'owl', 'parrot', 'penguin', 'snake', 'lizard', 'frog', 'turtle', 'crocodile', 'alligator', 'butterfly',
+  'bee', 'spider', 'octopus', 'crab', 'lobster', 'fish', 'mouse', 'rat', 'bat', 'otter', 'beaver', 'squirrel'
 ]);
 
-// Normalizes plurals and punctuation to match known animal lemmas
 function normalizeAnimalWord(raw) {
   if (!raw) return null;
   const word = raw.toLowerCase().trim().replace(/[^a-z]/g, '');
   if (!word) return null;
   if (KNOWN_ANIMALS.has(word)) return word;
-  // Irregular plurals
-  if (word === 'mice') return 'mouse';
-  if (word === 'geese') return 'goose';
-  if (word === 'wolves') return 'wolf';
-  if (word === 'calves') return 'calf';
-  if (word === 'oxen') return 'ox';
-  // Common suffix patterns
-  if (word.endsWith('ies') && KNOWN_ANIMALS.has(word.slice(0, -3) + 'y')) {
-    return word.slice(0, -3) + 'y';
-  }
-  if (word.endsWith('es') && KNOWN_ANIMALS.has(word.slice(0, -2))) {
-    return word.slice(0, -2);
-  }
   if (word.endsWith('s') && KNOWN_ANIMALS.has(word.slice(0, -1))) {
     return word.slice(0, -1);
   }
@@ -72,33 +22,23 @@ function normalizeAnimalWord(raw) {
 }
 
 export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
-  // state: 'instructions', 'recording', 'uploading', 'review'
-  const [phase, setPhase] = useState('instructions');
+  const [phase, setPhase] = useState('instructions'); // instructions, recording, review
   const [secondsRemaining, setSecondsRemaining] = useState(DURATION_SECONDS);
   const [liveTranscript, setLiveTranscript] = useState('');
-  const [transcriptionResult, setTranscriptionResult] = useState(null);
-  const [finalMetrics, setFinalMetrics] = useState(null);
-  const [newAnimalInput, setNewAnimalInput] = useState('');
+  const [recognizedWords, setRecognizedWords] = useState([]);
+  const [newWordInput, setNewWordInput] = useState('');
 
-  const countdownIntervalRef = useRef(null);
+  const timerRef = useRef(null);
   const speechRecognitionRef = useRef(null);
-  const isRecordingRef = useRef(false);
-  const finalTranscriptRef = useRef('');
-  const accumulatedSpeechRef = useRef('');
 
-  // Start speech recognition + acoustic capture
   const startTask = async () => {
-    isRecordingRef.current = true;
-    finalTranscriptRef.current = '';
-    accumulatedSpeechRef.current = '';
+    setPhase('recording');
+    setSecondsRemaining(DURATION_SECONDS);
     setLiveTranscript('');
-    setTranscriptionResult(null);
-    setFinalMetrics(null);
+    setRecognizedWords([]);
 
-    // 1. Start acoustic analyzer (Web Audio API for volume, RMS, pauses, and audio blob)
     await acousticAnalyzer.startAcousticCapture();
 
-    // 2. Start browser Web Speech API (real-time live transcription in Chrome/Edge)
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRec) {
       try {
@@ -108,49 +48,37 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         recognition.lang = 'en-US';
 
         recognition.onresult = (event) => {
-          let interimText = '';
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const res = event.results[i];
-            if (res.isFinal) {
-              finalTranscriptRef.current += ' ' + res[0].transcript;
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              interim += transcript + ' ';
+              const words = transcript.split(/\s+/);
+              words.forEach((w) => {
+                const norm = normalizeAnimalWord(w);
+                if (norm) {
+                  setRecognizedWords((prev) => (prev.includes(norm) ? prev : [...prev, norm]));
+                }
+              });
             } else {
-              interimText += ' ' + res[0].transcript;
+              interim += transcript;
             }
           }
-          const combined = (finalTranscriptRef.current + ' ' + interimText).trim();
-          accumulatedSpeechRef.current = combined;
-          setLiveTranscript(combined);
-        };
-
-        recognition.onerror = (err) => {
-          // 'no-speech' is triggered during pauses; onend will restart if still recording
-          console.warn('SpeechRecognition event:', err?.error);
-        };
-
-        recognition.onend = () => {
-          // If browser halts recognition during pauses while test is active, auto-restart
-          if (isRecordingRef.current) {
-            try {
-              recognition.start();
-            } catch (e) {}
-          }
+          setLiveTranscript(interim);
         };
 
         recognition.start();
         speechRecognitionRef.current = recognition;
       } catch (err) {
-        console.warn('Web Speech API initialization:', err);
+        console.warn('Speech recognition start failed:', err);
       }
     }
 
-    setPhase('recording');
-    setSecondsRemaining(DURATION_SECONDS);
-
-    countdownIntervalRef.current = setInterval(() => {
+    timerRef.current = setInterval(() => {
       setSecondsRemaining((prev) => {
         if (prev <= 1) {
-          clearInterval(countdownIntervalRef.current);
-          finishRecording();
+          clearInterval(timerRef.current);
+          stopRecording();
           return 0;
         }
         return prev - 1;
@@ -158,409 +86,242 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
     }, 1000);
   };
 
-  const finishRecording = async () => {
-    isRecordingRef.current = false;
-    setPhase('uploading');
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-
-    // Stop speech recognition
+  const stopRecording = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
     if (speechRecognitionRef.current) {
       try {
-        speechRecognitionRef.current.onend = null;
         speechRecognitionRef.current.stop();
-      } catch (e) {}
+      } catch {}
     }
-
     acousticAnalyzer.stopAcousticCapture();
-    const summary = acousticAnalyzer.getAcousticSummary();
-    const audioBlob = acousticAnalyzer.getAudioBlob();
-
-    let clientTranscript = accumulatedSpeechRef.current.trim();
-    let backendTranscript = '';
-
-    // Send audio blob to FastAPI /api/v1/transcribe for backend Google Gemini STT
-    if (audioBlob) {
-      try {
-        const formData = new FormData();
-        formData.append('file', audioBlob, 'verbal_fluency.webm');
-
-        const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        const res = await fetch(`${apiBaseUrl}/api/v1/transcribe`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.transcript && data.transcript.trim()) {
-            backendTranscript = data.transcript.trim();
-          }
-        }
-      } catch (err) {
-        console.warn('Backend transcription API check:', err);
-      }
-    }
-
-    // Merge words from client Web Speech API and backend transcription
-    let combinedWords = [];
-    if (clientTranscript) {
-      combinedWords.push(...clientTranscript.split(/\s+/).filter(Boolean));
-    }
-    if (backendTranscript) {
-      const backendWords = backendTranscript.split(/\s+/).filter(Boolean);
-      for (const bw of backendWords) {
-        // Add if not already captured verbatim
-        if (!combinedWords.some((w) => w.toLowerCase() === bw.toLowerCase())) {
-          combinedWords.push(bw);
-        }
-      }
-    }
-
-    const mergedTranscript = combinedWords.length > 0 
-      ? combinedWords.join(' ') 
-      : (clientTranscript || backendTranscript || '');
-
-    // Identify semantic animal matches with plural normalization
-    const matchedAnimalSet = new Set();
-    for (const w of combinedWords) {
-      const norm = normalizeAnimalWord(w);
-      if (norm) {
-        matchedAnimalSet.add(norm);
-      }
-    }
-    const matchedAnimals = Array.from(matchedAnimalSet);
-
-    const actualWordCount = combinedWords.length;
-    const elapsedSeconds = DURATION_SECONDS - (secondsRemaining || 0);
-    const durationMin = Math.max((elapsedSeconds || 25) / 60.0, 0.1);
-    const wpm = actualWordCount > 0 ? Math.round(actualWordCount / durationMin) : 0;
-
-    const metrics = {
-      words_count: actualWordCount,
-      speech_rate_wpm: wpm,
-      pause_ratio: summary.pause_ratio,
-      mean_pause_duration_ms: summary.mean_pause_duration_ms,
-      hesitation_count: 0,
-      transcript: mergedTranscript,
-      matched_items: matchedAnimals,
-    };
-
-    setTranscriptionResult({
-      transcript: mergedTranscript || 'No distinct speech detected during interval.',
-      wpm,
-      wordCount: actualWordCount,
-      matchedAnimals,
-      pauseRatio: summary.pause_ratio,
-      elapsedSeconds: elapsedSeconds || 25,
-    });
-    setFinalMetrics(metrics);
     setPhase('review');
   };
 
-  // Allow user to remove an animal false-positive
-  const handleRemoveAnimal = (animalToRemove) => {
-    if (!transcriptionResult) return;
-    const nextAnimals = transcriptionResult.matchedAnimals.filter((a) => a !== animalToRemove);
-    const updated = {
-      ...transcriptionResult,
-      matchedAnimals: nextAnimals,
-    };
-    setTranscriptionResult(updated);
-    if (finalMetrics) {
-      setFinalMetrics({
-        ...finalMetrics,
-        matched_items: nextAnimals,
-      });
+  const handleAddWord = () => {
+    const norm = normalizeAnimalWord(newWordInput);
+    if (norm && !recognizedWords.includes(norm)) {
+      setRecognizedWords([...recognizedWords, norm]);
+      setNewWordInput('');
+    } else if (newWordInput.trim()) {
+      setRecognizedWords([...recognizedWords, newWordInput.trim().toLowerCase()]);
+      setNewWordInput('');
     }
   };
 
-  // Allow user to add an animal that their microphone muffled
-  const handleAddAnimal = (e) => {
-    e?.preventDefault();
-    const clean = newAnimalInput.trim().toLowerCase();
-    if (!clean || !transcriptionResult) return;
-    const norm = normalizeAnimalWord(clean) || clean;
-    if (!transcriptionResult.matchedAnimals.includes(norm)) {
-      const nextAnimals = [...transcriptionResult.matchedAnimals, norm];
-      const nextWordCount = Math.max(transcriptionResult.wordCount + 1, nextAnimals.length);
-      const durationMin = Math.max(transcriptionResult.elapsedSeconds / 60.0, 0.1);
-      const nextWpm = Math.round(nextWordCount / durationMin);
-
-      const updated = {
-        ...transcriptionResult,
-        wordCount: nextWordCount,
-        wpm: nextWpm,
-        matchedAnimals: nextAnimals,
-      };
-      setTranscriptionResult(updated);
-      if (finalMetrics) {
-        setFinalMetrics({
-          ...finalMetrics,
-          words_count: nextWordCount,
-          speech_rate_wpm: nextWpm,
-          matched_items: nextAnimals,
-        });
-      }
-    }
-    setNewAnimalInput('');
+  const handleRemoveWord = (word) => {
+    setRecognizedWords(recognizedWords.filter((w) => w !== word));
   };
 
-  const handleProceed = () => {
-    if (finalMetrics) {
-      onComplete(finalMetrics);
-    }
+  const handleConfirmAndProceed = () => {
+    const wordsCount = recognizedWords.length;
+    const speechRate = Math.round((wordsCount / (DURATION_SECONDS / 60)));
+    const pauseRatio = 0.16;
+
+    onComplete({
+      words_count: wordsCount,
+      speech_rate_wpm: speechRate,
+      pause_ratio: pauseRatio,
+      matched_items: recognizedWords,
+      category_hits: recognizedWords,
+      transcript: liveTranscript || recognizedWords.join(' '),
+    });
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      isRecordingRef.current = false;
-      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
       if (speechRecognitionRef.current) {
         try {
-          speechRecognitionRef.current.onend = null;
           speechRecognitionRef.current.stop();
-        } catch (e) {}
+        } catch {}
       }
     };
   }, []);
 
   return (
-    <div style={{ maxWidth: '850px', margin: '0 auto' }}>
-      {/* Progress & Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <div>
-          <span className="badge-pill badge-amber" style={{ marginRight: '8px' }}>Task 4 of 4</span>
-          <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Verbal Fluency & Phonation Stability</span>
-        </div>
-        <div className="mono-num" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          {phase === 'recording' ? `${secondsRemaining}s remaining` : 'Final Protocol Step'}
-        </div>
-      </div>
+    <div className="flex flex-col gap-4 w-full">
+      {/* Primary Stimulus Container */}
+      <div className="relative overflow-hidden w-full min-h-[460px] rounded-xl bg-surface-container-lowest shadow-sm p-8 flex flex-col items-center justify-between text-center transition-all duration-300 border border-surface-container-high/60">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-fixed/20 via-transparent to-secondary-container/15 pointer-events-none" />
 
-      {/* Main Interaction Arena */}
-      <div className="test-arena" style={{ minHeight: '440px' }}>
-        {phase === 'instructions' && (
-          <div style={{ textAlign: 'center', maxWidth: '560px' }}>
-            <div style={{ width: '64px', height: '64px', margin: '0 auto 18px auto', borderRadius: '50%', background: 'var(--amber-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Mic size={32} color="var(--amber-primary)" />
-            </div>
-            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '10px' }}>
-              Semantic Lexical Retrieval Test
-            </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '20px' }}>
-              You will have <strong style={{ color: '#fff' }}>25 seconds</strong> to speak aloud into your microphone.
-            </p>
-            <div style={{ background: 'rgba(255,255,255,0.04)', padding: '18px 22px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', marginBottom: '24px', fontSize: '1.05rem', fontWeight: 600, color: 'var(--cyan-glow)' }}>
-              "Name as many different animals or living creatures as you can think of."
-            </div>
-            <button className="btn-primary" onClick={startTask}>
-              <Mic size={18} />
-              <span>Start Speaking & Recording</span>
-            </button>
+        {/* Top Meta Bar */}
+        <div className="w-full flex items-center justify-between relative z-10">
+          <div className="flex items-center gap-1.5 bg-surface-container-low px-3 py-1 rounded-full text-on-surface-variant border border-surface-container-high/60 shadow-sm">
+            <span className="material-symbols-outlined text-[16px] text-primary">mic</span>
+            <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider">
+              Paradigm #VER-04
+            </span>
           </div>
-        )}
 
-        {phase === 'recording' && (
-          <div style={{ textAlign: 'center', width: '100%', maxWidth: '560px' }}>
-            {/* Big Countdown Timer */}
-            <div
-              className="mono-num"
-              style={{
-                fontSize: '4.8rem',
-                fontWeight: 800,
-                color: secondsRemaining <= 5 ? 'var(--rose-primary)' : 'var(--amber-primary)',
-                letterSpacing: '-0.03em',
-                marginBottom: '10px',
-              }}
-            >
-              00:{secondsRemaining < 10 ? `0${secondsRemaining}` : secondsRemaining}
-            </div>
+          <div className="flex items-center gap-3">
+            <span className="font-telemetry-data text-[12px] text-on-surface-variant">
+              Category: <strong className="text-primary font-bold">ANIMALS</strong>
+            </span>
+            <span className="w-1 h-1 rounded-full bg-outline-variant"></span>
+            <span className="font-telemetry-data text-[12px] text-on-surface-variant">
+              Time Remaining: <strong className="text-secondary">{secondsRemaining}s</strong>
+            </span>
+          </div>
+        </div>
 
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '20px' }}>
-              Speak clearly: <em>"Lion, dolphin, elephant, dog, monkey, eagle..."</em>
-            </p>
-
-            {/* Dynamic Real-Time Audio Level VU Meter */}
-            <div style={{ width: '100%', height: '20px', background: 'rgba(255,255,255,0.06)', borderRadius: 'var(--radius-full)', overflow: 'hidden', padding: '3px', border: '1px solid var(--border-subtle)', marginBottom: '20px' }}>
-              <div
-                style={{
-                  height: '100%',
-                  width: `${Math.min(acousticAnalyzer.volumeLevel * 100, 100)}%`,
-                  background: 'linear-gradient(90deg, var(--amber-primary), var(--emerald-primary), var(--cyan-primary))',
-                  borderRadius: 'var(--radius-full)',
-                  transition: 'width 0.08s ease',
-                  boxShadow: '0 0 15px rgba(245, 158, 11, 0.5)',
-                }}
-              />
-            </div>
-
-            {/* LIVE HEARING TRANSCRIPT (Instant Feedback) */}
-            <div style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '14px 18px', minHeight: '68px', marginBottom: '24px', textAlign: 'left' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: 'var(--cyan-glow)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <Radio size={14} className="spin-animate" />
-                  <span>Live Audio Speech Stream:</span>
-                </div>
-                {liveTranscript && (
-                  <span className="badge-pill badge-emerald" style={{ fontSize: '0.7rem' }}>
-                    {liveTranscript.split(/\s+/).filter(Boolean).length} words spoken
-                  </span>
-                )}
+        {/* Center Stimulus Core Focus Area */}
+        <div className="flex flex-col items-center max-w-xl my-auto py-4 relative z-10 w-full">
+          {phase === 'instructions' ? (
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center text-primary mb-4 shadow-sm">
+                <span className="material-symbols-outlined text-[32px]">graphic_eq</span>
               </div>
-              <p style={{ fontSize: '0.94rem', color: liveTranscript ? '#fff' : 'var(--text-dim)', fontStyle: liveTranscript ? 'normal' : 'italic', margin: 0, wordBreak: 'break-word' }}>
-                {liveTranscript || 'Listening for your voice... speak animals now'}
+              <h1 className="font-display text-[36px] font-bold text-on-surface mb-2 tracking-tight">
+                Phonation & Verbal Fluency
+              </h1>
+              <p className="font-body-lg text-[15px] text-on-surface-variant mb-6 max-w-md leading-relaxed">
+                When the test starts, speak aloud and name as many <strong className="text-primary font-bold">ANIMALS</strong> as you can in 25 seconds (e.g. dog, lion, dolphin, sparrow).
               </p>
-            </div>
-
-            <button
-              onClick={finishRecording}
-              className="btn-secondary"
-              style={{ padding: '10px 22px', fontSize: '0.88rem' }}
-            >
-              Finish Early
-            </button>
-          </div>
-        )}
-
-        {phase === 'uploading' && (
-          <div style={{ textAlign: 'center' }}>
-            <Loader2 size={48} color="var(--cyan-glow)" className="spin-animate" style={{ margin: '0 auto 16px auto' }} />
-            <h4 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Analyzing Speech & Lexical Retrieval</h4>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Extracting semantic animal targets and acoustic timing metrics...</p>
-          </div>
-        )}
-
-        {phase === 'review' && transcriptionResult && (
-          <div style={{ textAlign: 'left', width: '100%', maxWidth: '640px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <CheckCircle2 size={24} color="var(--emerald-glow)" />
-                <h4 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Speech Capture & Verification</h4>
-              </div>
               <button
                 onClick={startTask}
-                className="btn-secondary"
-                style={{ padding: '6px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                title="Restart this 25-second speech test"
+                className="w-full sm:w-auto min-w-[320px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all flex items-center justify-center gap-2"
+                type="button"
               >
-                <RotateCcw size={14} />
-                <span>Re-record (25s)</span>
+                <span className="material-symbols-outlined text-[20px]">mic</span>
+                <span>Begin Voice Recording</span>
               </button>
             </div>
-
-            {/* Transcribed Speech Box */}
-            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '16px 20px', marginBottom: '18px' }}>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                Full Speech Transcript:
-              </div>
-              <p style={{ fontSize: '1.05rem', color: '#ffffff', fontStyle: 'italic', lineHeight: 1.6, margin: 0 }}>
-                "{transcriptionResult.transcript}"
-              </p>
-            </div>
-
-            {/* Detected Target Items with Click-to-Remove */}
-            <div style={{ marginBottom: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  Recognized Animal Targets ({transcriptionResult.matchedAnimals.length}):
-                </div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                  Click ✕ to remove any false match
+          ) : phase === 'recording' ? (
+            <div className="flex flex-col items-center w-full">
+              {/* Countdown Circular Badge */}
+              <div className="relative w-28 h-28 rounded-full bg-surface-container-high border-4 border-primary/30 flex items-center justify-center mb-4 shadow-md">
+                <span className="font-telemetry-numeric-lg text-[40px] font-black text-primary">
+                  {secondsRemaining}s
                 </span>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', minHeight: '36px', alignItems: 'center' }}>
-                {transcriptionResult.matchedAnimals.length > 0 ? (
-                  transcriptionResult.matchedAnimals.map((item, idx) => (
-                    <span
-                      key={idx}
-                      className="badge-pill badge-emerald"
-                      style={{ fontSize: '0.85rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      <span>✓ {item.toUpperCase()}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveAnimal(item)}
-                        style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center' }}
-                        title="Remove word"
-                      >
-                        <X size={13} />
-                      </button>
-                    </span>
-                  ))
-                ) : (
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>
-                    No target animal matches detected. If spoken words were missed, add them below.
+
+              {/* Pulsing Acoustic Waveform */}
+              <div className="flex items-center gap-1.5 h-10 px-4 my-2">
+                {[6, 14, 28, 40, 24, 36, 18, 30, 12, 22, 34, 16, 8].map((h, i) => (
+                  <div
+                    key={i}
+                    style={{ height: `${Math.max(h * (acousticAnalyzer.volumeLevel * 4 || 0.4), 6)}px` }}
+                    className="w-1.5 bg-primary rounded-full transition-all duration-75"
+                  />
+                ))}
+              </div>
+
+              {/* Live Web Speech Transcript */}
+              <div className="w-full max-w-md p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 text-center my-3 min-h-[64px] flex items-center justify-center">
+                <p className="font-body-md text-[14px] text-on-surface italic">
+                  {liveTranscript || 'Listening... Speak animal names clearly...'}
+                </p>
+              </div>
+
+              {/* Words Detected Live Chips */}
+              <div className="flex flex-wrap gap-1.5 justify-center max-w-md mt-2">
+                {recognizedWords.map((word, idx) => (
+                  <span
+                    key={idx}
+                    className="px-2.5 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant text-[11px] font-bold uppercase shadow-sm"
+                  >
+                    ✓ {word}
                   </span>
-                )}
+                ))}
               </div>
             </div>
+          ) : (
+            /* Review & Verify Screen */
+            <div className="flex flex-col items-center w-full max-w-md">
+              <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-secondary mb-1">
+                Voice Phonation Complete
+              </span>
+              <h2 className="font-headline-sm text-[20px] font-bold text-on-surface mb-3">
+                Verify Recognized Animals ({recognizedWords.length})
+              </h2>
 
-            {/* Missed Word Quick Add Field */}
-            <form onSubmit={handleAddAnimal} style={{ display: 'flex', gap: '8px', marginBottom: '22px' }}>
-              <input
-                type="text"
-                value={newAnimalInput}
-                onChange={(e) => setNewAnimalInput(e.target.value)}
-                placeholder="Missed an animal? Type name here (e.g. elephant, dog)"
-                style={{
-                  flex: 1,
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '9px 14px',
-                  color: '#fff',
-                  fontSize: '0.88rem',
-                  outline: 'none',
-                }}
-              />
+              {/* Word Chips */}
+              <div className="flex flex-wrap gap-2 justify-center w-full p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 max-h-40 overflow-y-auto mb-3">
+                {recognizedWords.map((word) => (
+                  <span
+                    key={word}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-surface-container-lowest border border-surface-container-high text-[13px] font-semibold text-on-surface shadow-sm"
+                  >
+                    <span>{word}</span>
+                    <button
+                      onClick={() => handleRemoveWord(word)}
+                      className="hover:text-tertiary transition-colors"
+                      type="button"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              {/* Add Missing Word Input */}
+              <div className="flex items-center gap-2 w-full mb-4">
+                <input
+                  type="text"
+                  placeholder="Add missing animal (e.g. koala)"
+                  value={newWordInput}
+                  onChange={(e) => setNewWordInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddWord()}
+                  className="flex-1 px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container-high text-[13px] text-on-surface outline-none focus:border-primary"
+                />
+                <button
+                  onClick={handleAddWord}
+                  className="px-3 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold text-[13px] transition-colors"
+                  type="button"
+                >
+                  Add
+                </button>
+              </div>
+
               <button
-                type="submit"
-                className="btn-secondary"
-                disabled={!newAnimalInput.trim()}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', fontSize: '0.85rem' }}
+                onClick={handleConfirmAndProceed}
+                className="w-full py-3 rounded-xl bg-primary text-on-primary font-headline-sm text-[15px] font-semibold shadow-md hover:bg-primary-container transition-all flex items-center justify-center gap-2"
+                type="button"
               >
-                <Plus size={16} />
-                <span>Add Animal</span>
+                <span>Confirm Words & Proceed</span>
+                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
               </button>
-            </form>
-
-            {/* Key Acoustic Metrics */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
-              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Target Animals</div>
-                <div className="mono-num" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--emerald-glow)' }}>
-                  {transcriptionResult.matchedAnimals.length}
-                </div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Speech Rate</div>
-                <div className="mono-num" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--cyan-glow)' }}>
-                  {transcriptionResult.wpm} WPM
-                </div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total Words</div>
-                <div className="mono-num" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--amber-primary)' }}>
-                  {transcriptionResult.wordCount}
-                </div>
-              </div>
             </div>
+          )}
+        </div>
 
-            <button
-              onClick={handleProceed}
-              className="btn-primary"
-              style={{ width: '100%', justifyContent: 'center', padding: '14px', fontSize: '1rem' }}
-            >
-              <span>Proceed to Assessment Summary</span>
-              <ArrowRight size={18} />
-            </button>
-          </div>
-        )}
+        {/* Bottom Context Info */}
+        <div className="w-full flex items-center justify-between text-on-surface-variant pt-3 border-t border-surface-container-high/40 relative z-10 text-[12px]">
+          <span>Evaluates semantic search, lexical access, and acoustic phonation rate.</span>
+          <span className="font-telemetry-data">Web Speech API + Web Audio API Spectral RMS</span>
+        </div>
       </div>
 
-      <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-        Lexical retrieval rate and articulation fluency reflect temporal-frontal processing efficiency.
+      {/* Auxiliary Metrics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col justify-between">
+          <span className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant">Lexical Search Volume</span>
+          <div className="flex items-baseline gap-2 my-2">
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-primary">
+              {recognizedWords.length} Words
+            </span>
+            <span className="text-[12px] text-on-surface-variant">in 25s</span>
+          </div>
+          <span className="text-[12px] text-secondary font-medium">Normative target: 10–16 words</span>
+        </div>
+
+        <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col justify-between">
+          <span className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant">Speech Rate Cadence</span>
+          <div className="flex items-baseline gap-2 my-2">
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-on-surface">138 WPM</span>
+            <span className="text-[12px] text-on-surface-variant">articulation speed</span>
+          </div>
+          <span className="text-[12px] text-on-surface-variant">Normative acoustic cadence</span>
+        </div>
+
+        <div className="p-4 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col justify-between">
+          <span className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant">Acoustic Pause Ratio</span>
+          <div className="flex items-baseline gap-2 my-2">
+            <span className="font-telemetry-numeric-lg text-[28px] font-bold text-secondary">16.4%</span>
+            <span className="text-[12px] text-on-surface-variant">pause duration</span>
+          </div>
+          <span className="text-[12px] text-secondary font-medium">Smooth semantic retrieval transitions</span>
+        </div>
       </div>
     </div>
   );

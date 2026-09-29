@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node src/features/report/tests/reportIntegration.test.js",
     "lint": "oxlint",
     "check:licensing": "node ../scripts/verify-licensing.mjs",
     "preview": "vite preview"
