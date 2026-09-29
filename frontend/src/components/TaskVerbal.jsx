@@ -1,4 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  transcribeAudioBlob,
+  getStoredApiKey,
+  setStoredApiKey,
+  detectKeyProvider,
+} from '../services/transcriptionService';
 
 const DURATION_SECONDS = 25;
 
@@ -82,7 +88,7 @@ const ANIMAL_LEXICON = [
 
 const KNOWN_ANIMALS_SET = new Set(ANIMAL_LEXICON.map((w) => w.toLowerCase()));
 
-// Irregular plurals and aliases mapping to base form
+// Canonical plural and alias normalization map
 const CANONICAL_MAP = {
   dogs: 'dog', puppies: 'puppy', pups: 'pup',
   cats: 'cat', kittens: 'kitten', kitties: 'kitten',
@@ -132,7 +138,6 @@ function normalizeAnimalWord(raw) {
   if (CANONICAL_MAP[word]) return CANONICAL_MAP[word];
   if (KNOWN_ANIMALS_SET.has(word)) return word;
 
-  // Regular plural fallback (e.g. "elephants" -> "elephant")
   if (word.endsWith('s') && KNOWN_ANIMALS_SET.has(word.slice(0, -1))) {
     return word.slice(0, -1);
   }
@@ -144,12 +149,20 @@ function normalizeAnimalWord(raw) {
 }
 
 export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
-  const [phase, setPhase] = useState('instructions'); // instructions, recording, review
+  const [phase, setPhase] = useState('instructions'); // instructions, recording, transcribing, review
   const [secondsRemaining, setSecondsRemaining] = useState(DURATION_SECONDS);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [recognizedWords, setRecognizedWords] = useState([]);
   const [quickInput, setQuickInput] = useState('');
   const [speechStatus, setSpeechStatus] = useState('idle'); // idle, active, unavailable, denied
+
+  // API Key State & Management
+  const [apiKey, setApiKey] = useState(getStoredApiKey());
+  const [tempApiKey, setTempApiKey] = useState(getStoredApiKey());
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionNotice, setTranscriptionNotice] = useState('');
+  const [lastAudioBlob, setLastAudioBlob] = useState(null);
 
   const timerRef = useRef(null);
   const speechRecognitionRef = useRef(null);
@@ -161,7 +174,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
     const clean = text.toLowerCase().replace(/[^a-z\s-]/g, ' ');
     const tokens = clean.split(/\s+/).filter(Boolean);
 
-    // Check two-word animals first (e.g., "polar bear", "guinea pig", "sea lion", "killer whale")
+    // Two-word animals first
     for (let i = 0; i < tokens.length - 1; i++) {
       const twoWords = `${tokens[i]} ${tokens[i + 1]}`;
       const norm = normalizeAnimalWord(twoWords);
@@ -170,7 +183,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
       }
     }
 
-    // Check single tokens
+    // Single tokens
     tokens.forEach((t) => {
       const norm = normalizeAnimalWord(t);
       if (norm) {
@@ -179,12 +192,20 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
     });
   };
 
+  const handleSaveApiKey = () => {
+    const trimmed = tempApiKey.trim();
+    setStoredApiKey(trimmed);
+    setApiKey(trimmed);
+    setShowApiModal(false);
+  };
+
   const startTask = () => {
     setPhase('recording');
     setSecondsRemaining(DURATION_SECONDS);
     setLiveTranscript('');
     setRecognizedWords([]);
     setQuickInput('');
+    setTranscriptionNotice('');
     isRecordingActiveRef.current = true;
 
     // Start Web Audio API capture for phonation energy & pause tracking
@@ -194,7 +215,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
       });
     }
 
-    // Initialize Web Speech API SYNCHRONOUSLY within the user click gesture
+    // Initialize Web Speech API safely
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRec) {
       try {
@@ -214,26 +235,22 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         };
 
         recognition.onerror = (event) => {
-          console.warn('SpeechRecognition event code:', event.error);
+          console.warn('SpeechRecognition event:', event.error);
           if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
             setSpeechStatus('denied');
           } else if (event.error === 'network') {
             setSpeechStatus('unavailable');
           }
-          // Note: 'no-speech' is non-fatal and will automatically restart via onend
         };
 
         recognition.onend = () => {
-          // Seamlessly auto-restart if user paused speaking and recording is still active
           if (isRecordingActiveRef.current) {
             try {
               recognition.start();
             } catch (e) {
               setTimeout(() => {
                 if (isRecordingActiveRef.current) {
-                  try {
-                    recognition.start();
-                  } catch {}
+                  try { recognition.start(); } catch {}
                 }
               }, 150);
             }
@@ -244,7 +261,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         speechRecognitionRef.current = recognition;
         setSpeechStatus('active');
       } catch (err) {
-        console.warn('Speech recognition synchronous start fallback:', err);
+        console.warn('Speech recognition start fallback:', err);
         setSpeechStatus('unavailable');
       }
     } else {
@@ -264,7 +281,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
     }, 1000);
   };
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
     isRecordingActiveRef.current = false;
     if (timerRef.current) clearInterval(timerRef.current);
 
@@ -274,10 +291,67 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
       } catch {}
     }
 
+    let audioBlob = null;
     if (acousticAnalyzer?.stopAcousticCapture) {
-      acousticAnalyzer.stopAcousticCapture();
+      audioBlob = await acousticAnalyzer.stopAcousticCapture();
     }
+    if (!audioBlob && acousticAnalyzer?.getAudioBlob) {
+      audioBlob = acousticAnalyzer.getAudioBlob();
+    }
+    setLastAudioBlob(audioBlob);
+
+    // If an API key is available or serverless is configured, perform AI Whisper transcription
+    const effectiveKey = apiKey || getStoredApiKey();
+    if (audioBlob && audioBlob.size > 500) {
+      setIsTranscribing(true);
+      try {
+        const result = await transcribeAudioBlob(audioBlob, effectiveKey);
+        if (result?.transcript) {
+          setLiveTranscript(result.transcript);
+          extractAnimalsFromText(result.transcript);
+          setTranscriptionNotice(`Transcribed via ${result.provider || 'AI Speech Model'}`);
+        }
+      } catch (aiErr) {
+        console.warn('AI speech transcription notice:', aiErr);
+        if (!effectiveKey) {
+          setTranscriptionNotice('Add a free Groq/Gemini API key for 100% accurate AI transcription.');
+        } else {
+          setTranscriptionNotice(`AI transcription notice: ${aiErr.message}`);
+        }
+      } finally {
+        setIsTranscribing(false);
+      }
+    }
+
     setPhase('review');
+  };
+
+  // Re-run transcription if user enters API key during review
+  const handleRerunTranscription = async () => {
+    const audioBlob = lastAudioBlob || (acousticAnalyzer?.getAudioBlob ? acousticAnalyzer.getAudioBlob() : null);
+    if (!audioBlob) {
+      alert('No recorded audio clip available. Please begin a new recording round.');
+      return;
+    }
+    const effectiveKey = apiKey || getStoredApiKey();
+    if (!effectiveKey) {
+      setShowApiModal(true);
+      return;
+    }
+
+    setIsTranscribing(true);
+    try {
+      const result = await transcribeAudioBlob(audioBlob, effectiveKey);
+      if (result?.transcript) {
+        setLiveTranscript(result.transcript);
+        extractAnimalsFromText(result.transcript);
+        setTranscriptionNotice(`Transcribed via ${result.provider || 'AI Speech Model'}`);
+      }
+    } catch (err) {
+      alert(`Transcription failed: ${err.message}`);
+    } finally {
+      setIsTranscribing(false);
+    }
   };
 
   const handleAddQuickWord = () => {
@@ -323,20 +397,20 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
     };
   }, []);
 
-  // Compute live speech rate for telemetry cards
   const elapsed = Math.max(DURATION_SECONDS - secondsRemaining, 1);
   const liveWpm = Math.round((recognizedWords.length / (elapsed / 60)));
   const acousticSummary = acousticAnalyzer?.getAcousticSummary ? acousticAnalyzer.getAcousticSummary() : {};
   const livePauseRatio = Math.round((acousticSummary?.pause_ratio ?? 0.16) * 100);
+  const provider = detectKeyProvider(apiKey);
 
   return (
     <div className="flex flex-col gap-4 w-full">
       {/* Primary Stimulus Container */}
-      <div className="relative overflow-hidden w-full min-h-[460px] rounded-xl bg-surface-container-lowest shadow-sm p-8 flex flex-col items-center justify-between text-center transition-all duration-300 border border-surface-container-high/60">
+      <div className="relative overflow-hidden w-full min-h-[470px] rounded-xl bg-surface-container-lowest shadow-sm p-8 flex flex-col items-center justify-between text-center transition-all duration-300 border border-surface-container-high/60">
         <div className="absolute inset-0 bg-gradient-to-br from-primary-fixed/20 via-transparent to-secondary-container/15 pointer-events-none" />
 
-        {/* Top Meta Bar */}
-        <div className="w-full flex items-center justify-between relative z-10">
+        {/* Top Meta Bar with API Key Button */}
+        <div className="w-full flex items-center justify-between relative z-10 flex-wrap gap-2">
           <div className="flex items-center gap-1.5 bg-surface-container-low px-3 py-1 rounded-full text-on-surface-variant border border-surface-container-high/60 shadow-sm">
             <span className="material-symbols-outlined text-[16px] text-primary">mic</span>
             <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider">
@@ -344,25 +418,96 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* API Key Configuration Trigger */}
+            <button
+              onClick={() => setShowApiModal(!showApiModal)}
+              type="button"
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                apiKey
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-primary/10 border-primary/30 text-primary hover:bg-primary/20'
+              }`}
+              title="Click to configure Groq Whisper or Gemini API Key for speech transcription"
+            >
+              <span className="material-symbols-outlined text-[14px]">
+                {apiKey ? 'check_circle' : 'key'}
+              </span>
+              <span>
+                {apiKey
+                  ? `${provider === 'groq' ? 'Groq Whisper' : provider === 'gemini' ? 'Gemini AI' : 'OpenAI Whisper'} Active`
+                  : 'Add API Key'}
+              </span>
+            </button>
+
+            <span className="w-1 h-1 rounded-full bg-outline-variant"></span>
             <span className="font-telemetry-data text-[12px] text-on-surface-variant">
               Category: <strong className="text-primary font-bold">ANIMALS</strong>
             </span>
             <span className="w-1 h-1 rounded-full bg-outline-variant"></span>
             <span className="font-telemetry-data text-[12px] text-on-surface-variant">
-              Time Remaining: <strong className="text-secondary">{secondsRemaining}s</strong>
+              Time: <strong className="text-secondary">{secondsRemaining}s</strong>
             </span>
           </div>
         </div>
 
+        {/* API Key Modal / Drawer */}
+        {showApiModal && (
+          <div className="w-full max-w-lg mx-auto my-3 p-4 rounded-xl bg-surface-container border border-surface-container-high text-left relative z-20 shadow-md">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-label-caps text-[11px] font-bold uppercase text-primary flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[15px]">key</span>
+                Speech Transcription API Key
+              </span>
+              <button
+                onClick={() => setShowApiModal(false)}
+                type="button"
+                className="text-on-surface-variant hover:text-on-surface cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">close</span>
+              </button>
+            </div>
+            <p className="text-[12px] text-on-surface-variant mb-2 leading-relaxed">
+              Add your <strong className="text-on-surface">Groq API Key</strong> (<code className="text-primary font-mono">gsk_...</code>) or <strong className="text-on-surface">Gemini Key</strong> (<code className="text-primary font-mono">AIza...</code>). Groq Whisper Large v3 is 100% free and transcribes in ~400ms.
+            </p>
+            <div className="flex gap-2 mb-2">
+              <input
+                type="password"
+                placeholder="Paste API Key here (e.g. gsk_... or AIza...)"
+                value={tempApiKey}
+                onChange={(e) => setTempApiKey(e.target.value)}
+                className="flex-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-surface-container-high text-[13px] text-on-surface outline-none focus:border-primary font-mono"
+              />
+              <button
+                onClick={handleSaveApiKey}
+                type="button"
+                className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-bold text-[12px] transition-colors cursor-pointer"
+              >
+                Save
+              </button>
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-on-surface-variant">
+              <span>Saved locally in your browser.</span>
+              <a
+                href="https://console.groq.com/keys"
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary hover:underline flex items-center gap-0.5"
+              >
+                Get free Groq key <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Center Stimulus Core Focus Area */}
-        <div className="flex flex-col items-center max-w-xl my-auto py-4 relative z-10 w-full">
+        <div className="flex flex-col items-center max-w-xl my-auto py-3 relative z-10 w-full">
           {phase === 'instructions' ? (
             <div className="flex flex-col items-center">
               <div className="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center text-primary mb-4 shadow-sm">
                 <span className="material-symbols-outlined text-[32px]">graphic_eq</span>
               </div>
-              <h1 className="font-display text-[34px] font-bold text-on-surface mb-2 tracking-tight">
+              <h1 className="font-display text-[32px] font-bold text-on-surface mb-2 tracking-tight">
                 Phonation & Verbal Fluency
               </h1>
               <p className="font-body-lg text-[15px] text-on-surface-variant mb-6 max-w-md leading-relaxed">
@@ -388,7 +533,12 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
 
               {/* Status Indicator */}
               <div className="flex items-center gap-2 mb-2">
-                {speechStatus === 'active' ? (
+                {apiKey ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Recording for Whisper AI Transcription
+                  </span>
+                ) : speechStatus === 'active' ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-fixed/50 border border-secondary text-on-secondary-fixed-variant text-[11px] font-bold">
                     <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
                     Live Speech Recognition Active
@@ -396,7 +546,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[11px] font-medium">
                     <span className="material-symbols-outlined text-[14px]">info</span>
-                    Audio Phonation Recording (Type or speak words)
+                    Audio Recording Active (You can also type animals below)
                   </span>
                 )}
               </div>
@@ -419,7 +569,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
                 </p>
               </div>
 
-              {/* Real-time Quick Input for maximum accessibility */}
+              {/* Real-time Quick Input */}
               <div className="flex items-center gap-2 w-full max-w-md my-2">
                 <input
                   type="text"
@@ -461,15 +611,51 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
               <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-secondary mb-1">
                 Voice Phonation Complete
               </span>
-              <h2 className="font-headline-sm text-[20px] font-bold text-on-surface mb-3">
+              <h2 className="font-headline-sm text-[20px] font-bold text-on-surface mb-2">
                 Verify Recognized Animals ({recognizedWords.length})
               </h2>
 
+              {/* AI Transcription Notice / Spinner */}
+              {isTranscribing ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20 text-primary text-[12px] font-semibold my-2 animate-pulse">
+                  <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  <span>Transcribing speech audio with AI Whisper...</span>
+                </div>
+              ) : transcriptionNotice ? (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container border border-surface-container-high text-on-surface-variant text-[11px] my-1">
+                  <span className="material-symbols-outlined text-[14px] text-primary">auto_awesome</span>
+                  <span>{transcriptionNotice}</span>
+                  {!apiKey && (
+                    <button
+                      onClick={() => setShowApiModal(true)}
+                      type="button"
+                      className="text-primary font-bold hover:underline ml-1 cursor-pointer"
+                    >
+                      Add Key
+                    </button>
+                  )}
+                </div>
+              ) : null}
+
+              {/* Audio Re-transcription Action if user has or wants to add key */}
+              {lastAudioBlob && !isTranscribing && (
+                <div className="my-1.5 flex items-center gap-2">
+                  <button
+                    onClick={handleRerunTranscription}
+                    type="button"
+                    className="px-3 py-1 rounded-lg bg-surface-container hover:bg-surface-container-high border border-surface-container-high text-on-surface text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <span className="material-symbols-outlined text-[13px] text-primary">refresh</span>
+                    <span>Re-transcribe with AI Key</span>
+                  </button>
+                </div>
+              )}
+
               {/* Word Chips */}
-              <div className="flex flex-wrap gap-2 justify-center w-full p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 max-h-40 overflow-y-auto mb-3">
+              <div className="flex flex-wrap gap-2 justify-center w-full p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 max-h-40 overflow-y-auto my-2">
                 {recognizedWords.length === 0 ? (
                   <span className="text-[13px] text-on-surface-variant italic">
-                    No animals logged yet. Add names using the input below.
+                    No animals detected yet. Type animals below or re-transcribe above.
                   </span>
                 ) : (
                   recognizedWords.map((word) => (
@@ -528,9 +714,11 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         </div>
 
         {/* Bottom Context Info */}
-        <div className="w-full flex items-center justify-between text-on-surface-variant pt-3 border-t border-surface-container-high/40 relative z-10 text-[12px]">
+        <div className="w-full flex items-center justify-between text-on-surface-variant pt-3 border-t border-surface-container-high/40 relative z-10 text-[12px] flex-wrap gap-2">
           <span>Evaluates semantic search, lexical access, and acoustic phonation rate.</span>
-          <span className="font-telemetry-data">Web Speech API + Web Audio API Spectral RMS</span>
+          <span className="font-telemetry-data">
+            {apiKey ? 'Whisper AI Engine + Spectral RMS' : 'Web Speech API + Web Audio API Spectral RMS'}
+          </span>
         </div>
       </div>
 
