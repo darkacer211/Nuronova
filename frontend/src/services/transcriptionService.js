@@ -10,9 +10,8 @@ export function getStoredApiKey() {
   if (typeof window === 'undefined') return '';
   return (
     localStorage.getItem(STORAGE_KEY) ||
-    import.meta.env.VITE_GEMINI_API_KEY ||
     import.meta.env.VITE_GROQ_API_KEY ||
-    import.meta.env.VITE_OPENAI_API_KEY ||
+    import.meta.env.VITE_GEMINI_API_KEY ||
     ''
   );
 }
