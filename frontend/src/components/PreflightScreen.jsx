@@ -19,12 +19,20 @@ export default function PreflightScreen({
   // Request camera and initialize gaze tracking
   const handleEnableCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 640 }, facingMode: 'user' },
-      });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false,
+        });
+      } catch (err1) {
+        console.warn('Ideal video constraint failed, attempting generic video:', err1);
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+
       if (videoPreviewRef.current) {
         videoPreviewRef.current.srcObject = stream;
-        videoPreviewRef.current.play();
+        videoPreviewRef.current.play().catch(() => {});
       }
       if (onCameraStreamReady) {
         onCameraStreamReady(stream);
@@ -33,6 +41,7 @@ export default function PreflightScreen({
     } catch (err) {
       console.warn('Camera permission issue:', err);
       setCameraReady(false);
+      alert('Camera access could not be acquired. Please ensure camera permissions are allowed in your browser address bar.');
     }
   };
 

@@ -4,7 +4,9 @@ export default function ClinicalTelemetryRail({
   gazeTracker,
   acousticAnalyzer,
   videoStreamRef,
+  cameraStream,
   isCameraActive,
+  onRequestCamera,
   onPause,
   onResetRound,
   onSkipTask,
@@ -14,12 +16,12 @@ export default function ClinicalTelemetryRail({
   const isMicActive = acousticAnalyzer?.isRecording ?? false;
   // Green light illuminates when sound/audio energy is received
   const hasAudio = volumeLevel > 0.04;
-  const hasCamera = isCameraActive || Boolean(videoStreamRef?.current?.srcObject);
+  const hasCamera = isCameraActive || Boolean(cameraStream) || Boolean(videoStreamRef?.current?.srcObject);
 
   // Bind live camera input stream to local preview
   useEffect(() => {
     const bindStream = () => {
-      const activeStream = videoStreamRef?.current?.srcObject;
+      const activeStream = cameraStream || videoStreamRef?.current?.srcObject;
       if (localVideoRef.current && activeStream) {
         if (localVideoRef.current.srcObject !== activeStream) {
           localVideoRef.current.srcObject = activeStream;
@@ -31,14 +33,38 @@ export default function ClinicalTelemetryRail({
     bindStream();
     const timer = setInterval(bindStream, 400);
     return () => clearInterval(timer);
-  }, [videoStreamRef, isCameraActive]);
+  }, [cameraStream, videoStreamRef, isCameraActive]);
+
+  const handleDirectEnableCamera = async () => {
+    try {
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false,
+        });
+      } catch (e1) {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+      if (onRequestCamera) {
+        onRequestCamera(stream);
+      }
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.play().catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Direct camera enable failed:', err);
+      alert('Camera access denied or unavailable. Please grant camera permission in your browser address bar.');
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4 w-full">
-      {/* Simple, Small Camera Box & Audio Indicator */}
+      {/* Simple, Small Camera Box, Blink Counter & Audio Indicator */}
       <div className="w-full rounded-xl bg-surface-container-lowest shadow-sm p-3.5 border border-surface-container-high/60 transition-colors flex flex-col gap-3">
-        {/* Top Header: Camera Label & Small Circular Audio Button */}
-        <div className="flex items-center justify-between">
+        {/* Top Header: Camera Label, Blink Counter & Small Circular Audio Button */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span
               className={`w-2 h-2 rounded-full ${
@@ -50,11 +76,17 @@ export default function ClinicalTelemetryRail({
             </span>
           </div>
 
-          {/* Small Circular Audio Button with dynamic green light */}
           <div className="flex items-center gap-2">
-            <span className="font-label-caps text-[10px] text-on-surface-variant font-medium">
-              {hasAudio ? 'Audio Detected' : isMicActive ? 'Listening' : 'Audio Standby'}
-            </span>
+            {/* Live Blink Counter Badge */}
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container border border-surface-container-high text-xs font-semibold text-on-surface"
+              title="Real-time spontaneous blink count tracked via MediaPipe face blendshapes"
+            >
+              <span className="material-symbols-outlined text-[15px] text-primary">visibility</span>
+              <span>Blinks: <strong className="font-mono text-primary text-[13px]">{gazeTracker?.liveBlinkCount ?? 0}</strong></span>
+            </div>
+
+            {/* Small Circular Audio Button with dynamic green light */}
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150 ${
                 hasAudio
@@ -81,9 +113,17 @@ export default function ClinicalTelemetryRail({
           />
 
           {!hasCamera && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-white/60 bg-surface-container-highest">
-              <span className="material-symbols-outlined text-[24px]">videocam_off</span>
-              <span className="font-body-sm text-[11px]">Camera Standby</span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/90 bg-surface-container-highest/95 p-3 text-center">
+              <span className="material-symbols-outlined text-[26px] text-primary">videocam</span>
+              <span className="font-body-sm text-[12px] font-semibold text-on-surface">Camera Standby</span>
+              <button
+                onClick={handleDirectEnableCamera}
+                type="button"
+                className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-bold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[15px]">videocam</span>
+                <span>Enable Camera</span>
+              </button>
             </div>
           )}
 

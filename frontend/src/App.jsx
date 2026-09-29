@@ -34,6 +34,7 @@ export default function App() {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analyzingStatusText, setAnalyzingStatusText] = useState('');
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
 
   // Micro Task Tracker State
   const [activeRound, setActiveRound] = useState(1);
@@ -85,10 +86,19 @@ export default function App() {
   // Camera stream handler
   const handleCameraStreamReady = async (stream) => {
     setIsCameraActive(true);
+    setCameraStream(stream);
     if (persistentVideoRef.current) {
       persistentVideoRef.current.srcObject = stream;
-      await persistentVideoRef.current.play();
-      await gazeTracker.startTracking(persistentVideoRef.current, stream);
+      try {
+        await persistentVideoRef.current.play();
+      } catch (err) {
+        console.warn('Persistent video play failed:', err);
+      }
+      try {
+        await gazeTracker.startTracking(persistentVideoRef.current, stream);
+      } catch (err) {
+        console.warn('Gaze tracking start failed:', err);
+      }
     }
   };
 
@@ -106,6 +116,24 @@ export default function App() {
     setTotalRounds(5);
     setActiveModule('begin-assessment');
     setCurrentStep('task_pvt');
+
+    // Auto-acquire camera if not already active
+    if (!isCameraActive && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false,
+        })
+        .then((stream) => {
+          handleCameraStreamReady(stream);
+        })
+        .catch((e1) => {
+          navigator.mediaDevices
+            .getUserMedia({ video: true, audio: false })
+            .then((stream) => handleCameraStreamReady(stream))
+            .catch((err) => console.warn('Auto-camera acquisition skipped:', err));
+        });
+    }
   };
 
   // 1b. Directly start Pediatric / Toddler Screening
@@ -590,7 +618,9 @@ export default function App() {
                       gazeTracker={gazeTracker}
                       acousticAnalyzer={acousticAnalyzer}
                       videoStreamRef={persistentVideoRef}
+                      cameraStream={cameraStream}
                       isCameraActive={isCameraActive}
+                      onRequestCamera={handleCameraStreamReady}
                       onPause={() => alert('Task Paused. Click resume when ready.')}
                       onResetRound={() => {
                         // Re-trigger current step
@@ -721,6 +751,16 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      {/* Hidden persistent video element for MediaPipe face tracking */}
+      <video
+        ref={persistentVideoRef}
+        playsInline
+        muted
+        autoPlay
+        style={{ position: 'fixed', top: -9999, left: -9999, width: 320, height: 240, opacity: 0, pointerEvents: 'none' }}
+        aria-hidden="true"
+      />
     </div>
   );
 }
