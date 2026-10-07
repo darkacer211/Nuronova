@@ -3,11 +3,13 @@ import React, { useState, useRef } from 'react';
 export default function PreflightScreen({
   onStartProtocol,
   onStartToddlerScreening,
+  onStartPediatricScreening,
   gazeTracker,
   acousticAnalyzer,
   onCameraStreamReady,
 }) {
   const [selectedPathway, setSelectedPathway] = useState('full'); // 'full' or 'toddler'
+  const [pediatricAgeGroup, setPediatricAgeGroup] = useState('toddler'); // 'toddler' or 'child'
   const [cameraReady, setCameraReady] = useState(false);
   const [micReady, setMicReady] = useState(false);
   const [consentGiven, setConsentGiven] = useState(true);
@@ -391,33 +393,109 @@ export default function PreflightScreen({
           </div>
         </div>
       ) : (
-        /* Toddler Pathway Detail Card */
-        <div className="p-6 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-on-secondary shadow-sm">
-              <span className="material-symbols-outlined text-[22px]">child_care</span>
+        /* Pediatric Pathway Detail Card */
+        <div className="p-6 rounded-xl bg-surface-container-lowest shadow-sm border border-surface-container-high/60 flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-on-secondary shadow-sm">
+                <span className="material-symbols-outlined text-[22px]">child_care</span>
+              </div>
+              <div>
+                <h3 className="font-headline-sm text-[16px] font-bold text-on-surface">
+                  Pediatric Caregiver-Assisted Screening
+                </h3>
+                <span className="font-body-sm text-[12px] text-on-surface-variant">
+                  Excludes reflex tasks; relies strictly on validated developmental screeners and camera eye/blink telemetry
+                </span>
+              </div>
             </div>
-            <div>
-              <h3 className="font-headline-sm text-[16px] font-bold text-on-surface">
-                Pediatric Screening Details
-              </h3>
-              <span className="font-body-sm text-[12px] text-on-surface-variant">
-                Standardized for toddlers aged 16 to 30 months
-              </span>
+            <span className="px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant text-[11px] font-bold uppercase">
+              Pediatric Protocol
+            </span>
+          </div>
+
+          {/* Age Selection */}
+          <div className="flex flex-col gap-2">
+            <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-secondary">
+              Select Child's Age Group:
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setPediatricAgeGroup('toddler')}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  pediatricAgeGroup === 'toddler'
+                    ? 'bg-secondary-fixed/50 border-secondary text-on-secondary-fixed-variant font-bold shadow-sm'
+                    : 'bg-surface-container-low border-surface-container-high text-on-surface hover:bg-surface-container'
+                }`}
+              >
+                <div className="font-bold text-[14px]">Toddler (16–30 months)</div>
+                <div className="text-[12px] opacity-80 mt-0.5">M-CHAT-R/F Milestone Screener</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPediatricAgeGroup('child')}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  pediatricAgeGroup === 'child'
+                    ? 'bg-secondary-fixed/50 border-secondary text-on-secondary-fixed-variant font-bold shadow-sm'
+                    : 'bg-surface-container-low border-surface-container-high text-on-surface hover:bg-surface-container'
+                }`}
+              >
+                <div className="font-bold text-[14px]">Child / Adolescent (Ages 4–15)</div>
+                <div className="text-[12px] opacity-80 mt-0.5">Pediatric AuDHD Battery (Vanderbilt + AQ-10 Child)</div>
+              </button>
             </div>
           </div>
 
-          <div className="max-w-md">
-            <label className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant block mb-1">
-              Child's Name or Nickname (Optional):
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. Leo"
-              value={toddlerNickname}
-              onChange={(e) => setToddlerNickname(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-lg bg-surface-container-low border border-surface-container-high text-[14px] text-on-surface outline-none focus:border-secondary"
-            />
+          {/* Child Nickname & Camera Setup Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-surface-container-high/60">
+            <div>
+              <label className="font-label-caps text-[11px] font-bold uppercase text-on-surface-variant block mb-1">
+                Child's Name or Nickname (Optional):
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Leo"
+                value={toddlerNickname}
+                onChange={(e) => setToddlerNickname(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-lg bg-surface-container-low border border-surface-container-high text-[14px] text-on-surface outline-none focus:border-secondary"
+              />
+              <span className="text-[11px] text-on-surface-variant mt-1 block">
+                Never transmitted off-device; stored locally in memory only.
+              </span>
+            </div>
+
+            {/* Optional Camera for Face/Blink Telemetry */}
+            <div className="p-3.5 rounded-xl bg-surface-container-low border border-surface-container-high/60 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[18px] text-secondary">visibility</span>
+                  <span className="text-[13px] font-bold text-on-surface">Face & Blink Camera</span>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cameraReady ? 'bg-secondary-fixed text-on-secondary-fixed-variant' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                  {cameraReady ? 'Tracking Calibrated' : 'Optional'}
+                </span>
+              </div>
+              <p className="text-[11px] text-on-surface-variant mb-2">
+                Enables on-device measurement of child visual engagement and blink frequency during the session.
+              </p>
+              {!cameraReady ? (
+                <button
+                  type="button"
+                  onClick={handleEnableCamera}
+                  className="px-3 py-1.5 rounded-lg bg-secondary text-on-secondary text-xs font-semibold hover:bg-secondary/90 transition-colors flex items-center justify-center gap-1.5 self-start cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[15px]">videocam</span>
+                  <span>Enable Camera Tracking</span>
+                </button>
+              ) : (
+                <div className="text-[11px] font-telemetry-data text-secondary font-semibold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+                  <span>Face landmarks & eye blinks active</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -458,7 +536,11 @@ export default function PreflightScreen({
         <button
           onClick={() => {
             if (selectedPathway === 'toddler') {
-              onStartToddlerScreening(toddlerNickname || 'Toddler');
+              if (onStartPediatricScreening) {
+                onStartPediatricScreening(toddlerNickname || 'Child', pediatricAgeGroup);
+              } else if (onStartToddlerScreening) {
+                onStartToddlerScreening(toddlerNickname || 'Toddler');
+              }
             } else {
               onStartProtocol(participantId);
             }
@@ -472,7 +554,11 @@ export default function PreflightScreen({
           type="button"
         >
           <span>
-            {selectedPathway === 'toddler' ? 'Launch M-CHAT-R/F Milestone Screener' : 'Begin Full Assessment'}
+            {selectedPathway === 'toddler'
+              ? pediatricAgeGroup === 'toddler'
+                ? 'Launch Toddler M-CHAT-R/F Milestone Screener'
+                : 'Launch Pediatric AuDHD Battery (Ages 4–15)'
+              : 'Begin Full Assessment'}
           </span>
           <span className="material-symbols-outlined text-[22px]">arrow_forward</span>
         </button>

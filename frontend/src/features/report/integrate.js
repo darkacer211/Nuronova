@@ -65,8 +65,12 @@ export function generateIntegratedFindings({
     const rtCv = Number(pvt.rt_cv) || Number((rtSd / Math.max(meanRt, 1)).toFixed(3));
     const gazeOnScreen = Number(oculo.gaze_on_screen) !== undefined ? Number(oculo.gaze_on_screen) : 0.92;
 
-    const taskShowsInattention = lapses >= 2 || rtCv > 0.18 || rtSd > 52 || gazeOnScreen < 0.85;
-    const taskShowsOptimal = lapses <= 1 && rtCv <= 0.15 && rtSd <= 45 && gazeOnScreen >= 0.90;
+    const taskShowsInattention = isChild
+      ? gazeOnScreen < 0.85 || Number(oculo.blink_rate || 0) > 26
+      : lapses >= 2 || rtCv > 0.18 || rtSd > 52 || gazeOnScreen < 0.85;
+    const taskShowsOptimal = isChild
+      ? gazeOnScreen >= 0.88
+      : lapses <= 1 && rtCv <= 0.15 && rtSd <= 45 && gazeOnScreen >= 0.90;
 
     let screenerShowsInattention = false;
     let screenerText = 'Not administered';
@@ -108,60 +112,70 @@ export function generateIntegratedFindings({
     if (taskShowsInattention && screenerShowsInattention) {
       agreement = 'consistent';
       confidence = cameraQuality === 'high' ? 'strong' : 'moderate';
-      reading =
-        'Objective computerized tests and subjective behavioral screening show consistent patterns of attentional fluctuation. Elevated reaction-time variability and brief gaze lapses align with reported everyday distractibility and focus maintenance difficulty.';
+      reading = isChild
+        ? 'Parent report and webcam gaze monitoring show consistent indications of attentional distractibility. Frequent visual redirection and reported focus challenges in daily activities align with screening criteria.'
+        : 'Objective computerized tests and subjective behavioral screening show consistent patterns of attentional fluctuation. Elevated reaction-time variability and brief gaze lapses align with reported everyday distractibility and focus maintenance difficulty.';
     } else if (taskShowsOptimal && !screenerShowsInattention) {
       agreement = 'consistent';
       confidence = 'strong';
-      reading =
-        'Robust sustained vigilance observed across both objective reaction tests and standardized screening. Consistent reaction times, minimal attentional lapses, and sustained gaze engagement align with normative self/parent reporting.';
+      reading = isChild
+        ? 'Steady visual engagement on screen accompanied by parent ratings below the clinical cutoff for childhood inattention.'
+        : 'Robust sustained vigilance observed across both objective reaction tests and standardized screening. Consistent reaction times, minimal attentional lapses, and sustained gaze engagement align with normative self/parent reporting.';
     } else if (taskShowsOptimal && screenerShowsInattention) {
       agreement = 'disagree';
       confidence = 'moderate';
-      reading =
-        'Divergence noted between structured computer performance and everyday behavioral report. Performance during brief, novel, gamified tasks often benefits from high situational arousal (novelty stimulation), which can temporarily compensate for underlying executive fatigue. Standardized screeners capture cumulative daily-life friction across hours and weeks.';
+      reading = isChild
+        ? 'Parent observations report frequent attentional friction in everyday unstructured routines, whereas on-screen camera visual fixation remained focused during structured interaction.'
+        : 'Divergence noted between structured computer performance and everyday behavioral report. Performance during brief, novel, gamified tasks often benefits from high situational arousal (novelty stimulation), which can temporarily compensate for underlying executive fatigue. Standardized screeners capture cumulative daily-life friction across hours and weeks.';
     } else if (taskShowsInattention && !screenerShowsInattention) {
       agreement = 'disagree';
       confidence = 'moderate';
-      reading =
-        'Elevated reaction-time variability or brief gaze lapses were recorded during testing, but clinical questionnaire responses were below screening thresholds. This pattern does not necessarily indicate chronic inattention; it is frequently observed during acute sleep debt, visual fatigue, or momentary external distractions during testing.';
+      reading = isChild
+        ? 'Intermittent gaze diversion was recorded by camera tracking, while parent questionnaire ratings remained below clinical thresholds. Eye wandering during desk viewing can reflect visual fatigue or environmental distractions.'
+        : 'Elevated reaction-time variability or brief gaze lapses were recorded during testing, but clinical questionnaire responses were below screening thresholds. This pattern does not necessarily indicate chronic inattention; it is frequently observed during acute sleep debt, visual fatigue, or momentary external distractions during testing.';
     } else {
       agreement = 'partial';
       confidence = 'moderate';
       reading =
-        'Mild variability observed across attention markers. Some measures demonstrate intact baseline reaction velocity, while secondary variability metrics indicate subtle fluctuations in alertness.';
+        'Mild variability observed across attention markers. Visual focus remained generally steady with subtle intermittent redirections.';
     }
 
-    const evidence = [
-      {
-        measure: 'PVT Mean Reaction Time',
-        value: `${meanRt} ms`,
-        source: MEASURE_REFERENCES.pvt_mean_rt.source,
-        expectedRange: MEASURE_REFERENCES.pvt_mean_rt.typicalRange,
-        interpretation: meanRt <= 290 ? 'Normative response velocity' : 'Slowed response latency',
-      },
-      {
-        measure: 'Trial-to-Trial Variability (RTCV)',
-        value: `${(rtCv * 100).toFixed(1)}% (SD: ${rtSd} ms)`,
-        source: MEASURE_REFERENCES.pvt_rt_cv.source,
-        expectedRange: '< 15.0%',
-        interpretation: rtCv <= 0.15 ? 'Consistent trial timing' : 'Elevated response variability',
-      },
-      {
-        measure: 'Attentional Lapses (>500ms)',
-        value: `${lapses} lapse(s)`,
-        source: MEASURE_REFERENCES.pvt_lapses.source,
-        expectedRange: '0 – 1 lapses',
-        interpretation: lapses <= 1 ? 'Stable vigilance maintenance' : 'Lapses in continuous alerting',
-      },
-      {
-        measure: 'On-Screen Gaze Fixation',
-        value: `${Math.round(gazeOnScreen * 100)}%`,
-        source: MEASURE_REFERENCES.gaze_on_screen.source,
-        expectedRange: '≥ 90%',
-        interpretation: gazeOnScreen >= 0.88 ? 'Continuous visual engagement' : 'Intermittent visual diversion',
-      },
-    ];
+    const evidence = [];
+
+    if (!isChild) {
+      evidence.push(
+        {
+          measure: 'PVT Mean Reaction Time',
+          value: `${meanRt} ms`,
+          source: MEASURE_REFERENCES.pvt_mean_rt.source,
+          expectedRange: MEASURE_REFERENCES.pvt_mean_rt.typicalRange,
+          interpretation: meanRt <= 290 ? 'Normative response velocity' : 'Slowed response latency',
+        },
+        {
+          measure: 'Trial-to-Trial Variability (RTCV)',
+          value: `${(rtCv * 100).toFixed(1)}% (SD: ${rtSd} ms)`,
+          source: MEASURE_REFERENCES.pvt_rt_cv.source,
+          expectedRange: '< 15.0%',
+          interpretation: rtCv <= 0.15 ? 'Consistent trial timing' : 'Elevated response variability',
+        },
+        {
+          measure: 'Attentional Lapses (>500ms)',
+          value: `${lapses} lapse(s)`,
+          source: MEASURE_REFERENCES.pvt_lapses.source,
+          expectedRange: '0 – 1 lapses',
+          interpretation: lapses <= 1 ? 'Stable vigilance maintenance' : 'Lapses in continuous alerting',
+        }
+      );
+    }
+
+    evidence.push({
+      measure: 'On-Screen Gaze Fixation',
+      value: `${Math.round(gazeOnScreen * 100)}%`,
+      source: MEASURE_REFERENCES.gaze_on_screen.source,
+      expectedRange: '≥ 90%',
+      interpretation: gazeOnScreen >= 0.88 ? 'Continuous visual engagement' : 'Intermittent visual diversion',
+    });
+
     if (screenerEvidence) evidence.push(screenerEvidence);
 
     findings.push({
@@ -169,8 +183,9 @@ export function generateIntegratedFindings({
       theme: 'sustained_attention',
       title,
       evidence,
-      research_note:
-        'In ADHD neuropsychology (Kofler et al., 2013; Tamm et al., 2012), trial-to-trial reaction time variability (IIV / RTCV) exhibits a larger effect size (d ≈ 0.76) than simple mean reaction time. Brief structured tasks provide extrinsic dopamine/arousal that can mask difficulties evident in unprompted environments (Sonuga-Barke et al., 2010).',
+      research_note: isChild
+        ? 'In pediatric ADHD assessment, behavioral observation across structured and unstructured contexts provides primary clinical criteria (Wolraich et al., 2003). Computer vision gaze tracking serves as an objective non-invasive marker of visual attention.'
+        : 'In ADHD neuropsychology (Kofler et al., 2013; Tamm et al., 2012), trial-to-trial reaction time variability (IIV / RTCV) exhibits a larger effect size (d ≈ 0.76) than simple mean reaction time. Brief structured tasks provide extrinsic dopamine/arousal that can mask difficulties evident in unprompted environments (Sonuga-Barke et al., 2010).',
       reading,
       confidence,
       agreement,
@@ -178,7 +193,9 @@ export function generateIntegratedFindings({
 
     agreementMatrix.push({
       area: 'Sustained Attention & Alerting',
-      tasksSensors: `Mean RT ${meanRt}ms, CV ${(rtCv * 100).toFixed(0)}%, ${lapses} lapse(s), ${Math.round(gazeOnScreen * 100)}% gaze`,
+      tasksSensors: isChild
+        ? `Webcam Gaze: ${Math.round(gazeOnScreen * 100)}% focus, ${Number(oculo.blink_rate || 18.2)} blinks/min`
+        : `Mean RT ${meanRt}ms, CV ${(rtCv * 100).toFixed(0)}%, ${lapses} lapse(s), ${Math.round(gazeOnScreen * 100)}% gaze`,
       questionnaires: screenerText,
       agreement,
       statusChip: getAgreementChip(agreement),
@@ -302,15 +319,14 @@ export function generateIntegratedFindings({
       area: 'Motor Steadiness & Fixation',
       tasksSensors: `Fixation dispersion ${dispersion}px (~${estDegreesVisualAngle}°), Head var ${headYawVar}°, Blink rate ${blinkRate}/min`,
       questionnaires: screenerText,
-      agreement,
       statusChip: getAgreementChip(agreement),
     });
   }
 
   // =========================================================================
-  // THEME C: Executive Inhibition & Working Memory Buffer
+  // THEME C: Executive Inhibition & Working Memory Buffer (Adults only)
   // =========================================================================
-  {
+  if (!isChild) {
     const stroopCost = typeof stroop.interference_cost === 'number' ? stroop.interference_cost : 110;
     const stroopAccuracy = typeof stroop.accuracy === 'number' ? stroop.accuracy : 0.95;
     const digitSpan = Number(nback.span) || 7;
@@ -377,11 +393,7 @@ export function generateIntegratedFindings({
     agreementMatrix.push({
       area: 'Executive Inhibition & Memory',
       tasksSensors: `Stroop cost +${stroopCost}ms (${Math.round(stroopAccuracy * 100)}% acc), Digit span ${digitSpan}`,
-      questionnaires: isChild
-        ? vanderbiltResult
-          ? `Pediatric battery (Inattention: ${vanderbiltResult.inattentiveCount || 0}/9)`
-          : 'Pediatric screening'
-        : asrsResult
+      questionnaires: asrsResult
         ? `Adult ASRS (Working memory items: ${asrsResult.sumScore || 0}/24)`
         : 'Adult screener',
       agreement,
@@ -395,6 +407,7 @@ export function generateIntegratedFindings({
   {
     const speechWpm = Number(verbal.speech_rate_wpm) || 138;
     const pauseRatio = Number(verbal.pause_ratio) || 0.16;
+    const gazeOnScreen = Number(oculo.gaze_on_screen) !== undefined ? Number(oculo.gaze_on_screen) : 0.92;
 
     let aqScore = 0;
     let aqCutoff = 6;
@@ -443,40 +456,56 @@ export function generateIntegratedFindings({
     if (aqPositive || catqPositive) {
       agreement = 'consistent';
       confidence = 'strong';
-      reading =
-        `Responses on standardized screening (${aqName}: ${aqScore}/10${catqTotal !== null ? `, CAT-Q: ${catqTotal}/175` : ''}) exceed established clinical thresholds, indicating significant traits consistent with the autism spectrum or active social camouflaging. Speech pacing remained fluent (${speechWpm} WPM) with typical acoustic pauses (${Math.round(pauseRatio * 100)}%). This screening does not diagnose autism; sharing results with a specialized neurodevelopmental clinician is recommended.`;
+      reading = isChild
+        ? `Responses on standardized pediatric screening (${aqName}: ${aqScore}/10) meet or exceed the clinical threshold for autism spectrum evaluation. Parent report identifies focused interests, social communication differences, or sensory preferences. Sharing these findings with your pediatrician or developmental specialist is recommended.`
+        : `Responses on standardized screening (${aqName}: ${aqScore}/10${catqTotal !== null ? `, CAT-Q: ${catqTotal}/175` : ''}) exceed established clinical thresholds, indicating significant traits consistent with the autism spectrum or active social camouflaging. Speech pacing remained fluent (${speechWpm} WPM) with typical acoustic pauses (${Math.round(pauseRatio * 100)}%). This screening does not diagnose autism; sharing results with a specialized neurodevelopmental clinician is recommended.`;
     } else if (aqScore > 0 || catqTotal !== null) {
       agreement = 'consistent';
-      reading =
-        `Standardized screening scores (${aqName}: ${aqScore}/10) fall below clinical referral cutoffs. Speech formulation pacing (${speechWpm} WPM) and acoustic pauses were within typical communication benchmarks.`;
+      reading = isChild
+        ? `Standardized pediatric screening scores (${aqName}: ${aqScore}/10) fall below the referral cutoff for childhood autism traits.`
+        : `Standardized screening scores (${aqName}: ${aqScore}/10) fall below clinical referral cutoffs. Speech formulation pacing (${speechWpm} WPM) and acoustic pauses were within typical communication benchmarks.`;
     } else if (mchatResult) {
       title = 'Toddler Milestone Surveillance (M-CHAT-R/F)';
       agreement = 'consistent';
       confidence = 'strong';
       reading = `Toddler developmental screening evaluated ${mchatResult.totalScore}/20 risk markers (Risk tier: ${mchatResult.riskLevel || 'Low'}). ${mchatResult.summary}`;
     } else {
-      reading =
-        'Autism-specific behavioral screening was not selected for this assessment session. Objective verbal fluency showed fluent semantic retrieval and standard acoustic pauses.';
+      reading = isChild
+        ? 'Autism-specific pediatric screening was not completed in this session.'
+        : 'Autism-specific behavioral screening was not selected for this assessment session. Objective verbal fluency showed fluent semantic retrieval and standard acoustic pauses.';
     }
 
-    const evidence = [
-      {
-        measure: 'Verbal Fluency Speech Rate',
-        value: `${speechWpm} WPM`,
-        source: MEASURE_REFERENCES.verbal_speech_rate.source,
-        expectedRange: MEASURE_REFERENCES.verbal_speech_rate.typicalRange,
-        interpretation: speechWpm >= 115 ? 'Fluent lexical retrieval speed' : 'Deliberate speech initiation',
-      },
-      {
-        measure: 'Acoustic Pause Ratio',
-        value: `${Math.round(pauseRatio * 100)}%`,
-        source: MEASURE_REFERENCES.verbal_pause_ratio.source,
-        expectedRange: '10% – 22%',
-        interpretation: pauseRatio <= 0.22 ? 'Standard phonation rhythm' : 'Frequent formulation pauses',
-      },
-    ];
+    const evidence = [];
+
+    if (!isChild) {
+      evidence.push(
+        {
+          measure: 'Verbal Fluency Speech Rate',
+          value: `${speechWpm} WPM`,
+          source: MEASURE_REFERENCES.verbal_speech_rate.source,
+          expectedRange: MEASURE_REFERENCES.verbal_speech_rate.typicalRange,
+          interpretation: speechWpm >= 115 ? 'Fluent lexical retrieval speed' : 'Deliberate speech initiation',
+        },
+        {
+          measure: 'Acoustic Pause Ratio',
+          value: `${Math.round(pauseRatio * 100)}%`,
+          source: MEASURE_REFERENCES.verbal_pause_ratio.source,
+          expectedRange: '10% – 22%',
+          interpretation: pauseRatio <= 0.22 ? 'Standard phonation rhythm' : 'Frequent formulation pauses',
+        }
+      );
+    } else {
+      evidence.push({
+        measure: 'Webcam Visual Engagement',
+        value: `${Math.round(gazeOnScreen * 100)}%`,
+        source: MEASURE_REFERENCES.gaze_on_screen.source,
+        expectedRange: '≥ 90%',
+        interpretation: gazeOnScreen >= 0.88 ? 'Maintained on-screen gaze focus' : 'Variable visual orientation',
+      });
+    }
+
     if (screenerEvidence) evidence.push(screenerEvidence);
-    if (catqResult) {
+    if (catqResult && !isChild) {
       evidence.push({
         measure: 'CAT-Q Camouflaging Total',
         value: `${catqTotal} / 175`,
@@ -493,8 +522,9 @@ export function generateIntegratedFindings({
       theme: 'autism_traits',
       title,
       evidence,
-      research_note:
-        'Standardized questionnaires (AQ-10, CAT-Q, M-CHAT) are triage screening instruments designed to evaluate whether a full multi-disciplinary clinical evaluation is indicated (Allison et al., 2012; Hull et al., 2019). Computerized cognitive tests cannot confirm or exclude an autism spectrum diagnosis.',
+      research_note: isChild
+        ? 'Standardized parent questionnaires (AQ-10 Child, M-CHAT-R/F) are primary developmental triage instruments (Allison et al., 2012; Robins et al., 2014) designed to identify children who benefit from comprehensive developmental assessment.'
+        : 'Standardized questionnaires (AQ-10, CAT-Q, M-CHAT) are triage screening instruments designed to evaluate whether a full multi-disciplinary clinical evaluation is indicated (Allison et al., 2012; Hull et al., 2019). Computerized cognitive tests cannot confirm or exclude an autism spectrum diagnosis.',
       reading,
       confidence,
       agreement,
@@ -502,7 +532,9 @@ export function generateIntegratedFindings({
 
     agreementMatrix.push({
       area: 'Autism Traits & Communication',
-      tasksSensors: `Verbal rate ${speechWpm} WPM, pause ratio ${Math.round(pauseRatio * 100)}%`,
+      tasksSensors: isChild
+        ? `Webcam Gaze: ${Math.round(gazeOnScreen * 100)}% visual focus`
+        : `Verbal rate ${speechWpm} WPM, pause ratio ${Math.round(pauseRatio * 100)}%`,
       questionnaires: screenerEvidence
         ? `${aqName}: ${aqScore}/10${catqTotal !== null ? ` • CAT-Q: ${catqTotal}/175` : ''}`
         : mchatResult
@@ -538,6 +570,47 @@ export function generateIntegratedFindings({
 function generatePlainLanguageTakeaways({ cpi_score, domains, findings, isChild, screening }) {
   const takeaways = [];
 
+  if (isChild) {
+    const screenerPositive = screening?.results?.some((r) => r.isPositive);
+
+    // Takeaway 1: Pediatric Milestone Overview
+    if (screenerPositive) {
+      takeaways.push(
+        'Parent report identified one or more developmental screening criteria meeting thresholds for further pediatric exploration.'
+      );
+    } else {
+      takeaways.push(
+        'Parent developmental ratings fall within typical age-expected milestones across evaluated developmental and communication domains.'
+      );
+    }
+
+    // Takeaway 2: Webcam Telemetry Integration
+    const attentionalFinding = findings.find((f) => f.theme === 'sustained_attention');
+    if (attentionalFinding?.agreement === 'consistent') {
+      takeaways.push(
+        'Webcam eye tracking (on-screen gaze fixation and physiological blink balance) aligned consistently with parent behavioral observations.'
+      );
+    } else {
+      takeaways.push(
+        'On-device camera eye tracking observed engaged visual orientation throughout the screening session.'
+      );
+    }
+
+    // Takeaway 3: Actionable Pediatric Next Steps
+    if (screenerPositive) {
+      takeaways.push(
+        'We recommend sharing this developmental summary with your pediatrician or child developmental team for individualized clinical guidance.'
+      );
+    } else {
+      takeaways.push(
+        'Continue routine well-child developmental visits with your pediatrician and maintain healthy sensory-friendly routines.'
+      );
+    }
+
+    return takeaways;
+  }
+
+  // Adult Takeaways
   // Takeaway 1: Overall Performance
   if (cpi_score >= 82) {
     takeaways.push(
@@ -574,12 +647,11 @@ function generatePlainLanguageTakeaways({ cpi_score, domains, findings, isChild,
   }
 
   // Takeaway 3: Actionable Guidance
-  const autismFinding = findings.find((f) => f.theme === 'autism_traits');
   const screenerPositive = screening?.results?.some((r) => r.isPositive);
 
   if (screenerPositive) {
     takeaways.push(
-      'One or more standardized behavioral screeners exceeded the threshold for follow-up. We recommend sharing this report with your healthcare provider or pediatrician for an individualized discussion.'
+      'One or more standardized behavioral screeners exceeded the threshold for follow-up. We recommend sharing this report with your healthcare provider for an individualized discussion.'
     );
   } else {
     takeaways.push(

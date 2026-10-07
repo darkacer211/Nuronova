@@ -136,24 +136,31 @@ export default function App() {
     }
   };
 
-  // 1b. Directly start Pediatric / Toddler Screening
-  const handleStartToddlerScreening = (nickname) => {
+  // 1b. Directly start Pediatric / Child Screening
+  const handleStartPediatricScreening = (nickname, ageGroup = 'toddler') => {
+    const isToddler = ageGroup === 'toddler';
+    const flowId = isToddler ? 'pediatric_mchat' : 'pediatric_child';
     const routeInfo = {
-      flowId: 'pediatric_mchat',
+      flowId,
       respondentType: 'parent',
-      targetName: nickname ? `Child (${nickname})` : 'Toddler (16–30m)',
+      targetName: nickname ? `Child (${nickname})` : isToddler ? 'Toddler (16–30m)' : 'Child (Ages 4–15)',
       isChild: true,
-      ageGroup: '16–30 months',
+      ageGroup: isToddler ? '16–30 months' : 'Ages 4–15',
     };
     setParticipantInfo(routeInfo);
-    const flow = SCREENING_FLOWS.find((f) => f.id === 'pediatric_mchat');
+    const flow = SCREENING_FLOWS.find((f) => f.id === flowId);
     setSelectedFlow(flow);
     setCurrentTestIndex(0);
     setCurrentQuestionIndex(0);
     setCurrentResponses({});
     setCompletedScreeningResults([]);
+    sessionDataRef.current.tasks = {}; // No cognitive reflex tasks for child!
     setActiveModule('begin-assessment');
     setCurrentStep('questionnaire');
+  };
+
+  const handleStartToddlerScreening = (nickname) => {
+    handleStartPediatricScreening(nickname, 'toddler');
   };
 
   // 2. Complete PVT
@@ -302,45 +309,75 @@ export default function App() {
     };
     sessionDataRef.current.screening = screeningData;
 
-    const isPediatricOnly = !sessionDataRef.current.tasks.pvt && screeningData?.participant?.isChild;
+    const isChild = Boolean(screeningData?.participant?.isChild);
 
-    if (isPediatricOnly) {
-      const mchatResult = screeningData.results?.[0];
-      const pedCpi = mchatResult?.isPositive ? 62 : 88;
+    if (isChild) {
+      // Clear out any adult tasks so they are not included or sent
+      sessionDataRef.current.tasks = {};
+
+      const childResults = screeningData?.results || [];
+      const mchatResult = childResults.find((r) => r.testId === 'mchat');
+      const vanderbiltResult = childResults.find((r) => r.testId === 'vanderbilt');
+      const aqChildResult = childResults.find((r) => r.testId === 'aq_child');
+      const hasPositiveScreener = childResults.some((r) => r.isPositive);
+
       const fallbackPediatric = {
         session_id: `ped_${Date.now().toString(36)}`,
         is_pediatric_only: true,
-        cpi_score: pedCpi,
-        percentile_rank: computePercentile(pedCpi, 75, 12),
-        confidence_interval: mchatResult?.isPositive ? [59.5, 64.5] : [85.5, 90.5],
-        domains: {
-          executive_function: 75.0,
-          sustained_attention: 75.0,
-          processing_speed: 75.0,
-          cognitive_stability: 75.0,
-        },
+        isChild: true,
+        participant: screeningData?.participant,
+        has_positive_screener: hasPositiveScreener,
+        // Strictly no computerized cognitive ability scores for children
+        domains: null,
+        cpi_score: null,
+        percentile_rank: null,
+        confidence_interval: null,
         integrated_findings: generateIntegratedFindings({
-          tasks: {},
+          tasks: {}, // Empty tasks for pediatric evaluation!
           biomarkers: sessionDataRef.current.biomarkers,
           screening: screeningData,
-          domains: { executive_function: 75, sustained_attention: 75, processing_speed: 75, cognitive_stability: 75 },
-          cpi_score: pedCpi,
+          domains: {},
+          cpi_score: 75,
         }),
-        shap_explanations: [],
+        shap_explanations: [
+          {
+            feature: 'gaze_on_screen',
+            label: 'On-Screen Visual Engagement',
+            impact_value: (oculoSummary.gaze_on_screen || 0.92) >= 0.88 ? 4.5 : -3.2,
+            direction: (oculoSummary.gaze_on_screen || 0.92) >= 0.88 ? 'positive' : 'negative',
+            description: 'Webcam tracking of face orientation and continuous gaze toward screen.',
+          },
+          {
+            feature: 'blink_rate',
+            label: 'Spontaneous Blink Balance',
+            impact_value: (oculoSummary.blink_rate || 18.2) <= 24 ? 3.8 : -2.5,
+            direction: (oculoSummary.blink_rate || 18.2) <= 24 ? 'positive' : 'negative',
+            description: 'Natural eye blink rate reflecting visual comfort and physiological arousal.',
+          },
+          {
+            feature: 'head_yaw_var',
+            label: 'Head Posture Steadiness',
+            impact_value: (oculoSummary.head_yaw_var || 3.2) <= 4.5 ? 3.0 : -2.8,
+            direction: (oculoSummary.head_yaw_var || 3.2) <= 4.5 ? 'positive' : 'negative',
+            description: 'Stability of head orientation during observational screening.',
+          },
+        ],
         narrative_report: {
-          summary: mchatResult?.summary || 'Pediatric milestone screening completed.',
+          summary: mchatResult?.summary || (hasPositiveScreener
+            ? 'Pediatric screening identified behavioral criteria warranting developmental clinical consultation.'
+            : 'Pediatric behavioral screening and webcam eye metrics completed within typical age parameters.'),
           key_strengths: [
             'Parent observational screening completed successfully.',
-            'Standardized M-CHAT-R/F criteria evaluated across 20 milestone behaviors.',
+            'Continuous webcam face and blink telemetry gathered during session.',
           ],
-          fatigue_indicators: mchatResult?.isPositive
-            ? ['Specific joint-attention or communication behaviors identified for developmental follow-up.']
+          fatigue_indicators: hasPositiveScreener
+            ? ['Specific milestone or behavioral criteria identified for developmental follow-up.']
             : ['No developmental red flags identified at this screening interval.'],
           recommendations: [
-            mchatResult?.recommendation || 'Continue routine developmental surveillance with your pediatrician.',
+            mchatResult?.recommendation || vanderbiltResult?.recommendation || aqChildResult?.recommendation || 'Continue routine developmental tracking with your pediatrician.',
           ],
           disclaimer:
-            'The M-CHAT-R/F is a developmental screening tool, not a medical diagnosis. Share this result with your pediatrician.',
+            'This evaluation is an informational screening tool, not a medical diagnosis. Share this report with your pediatrician or child developmental specialist.',
         },
       };
       setAnalysisResult(fallbackPediatric);
@@ -644,6 +681,7 @@ export default function App() {
                     <PreflightScreen
                       onStartProtocol={handleStartProtocol}
                       onStartToddlerScreening={handleStartToddlerScreening}
+                      onStartPediatricScreening={handleStartPediatricScreening}
                       gazeTracker={gazeTracker}
                       acousticAnalyzer={acousticAnalyzer}
                       onCameraStreamReady={handleCameraStreamReady}

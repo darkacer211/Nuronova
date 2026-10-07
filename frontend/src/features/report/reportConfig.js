@@ -248,4 +248,29 @@ export const GLOSSARY_TERMS = {
     abbr: 'CPI',
     definition: 'A standardized composite benchmark score (calibrated to a general population mean of 75, SD 12) combining executive memory, vigilance, speed, and eye stability.',
   },
+  ASRS: {
+    term: 'Adult ADHD Self-Report Scale (ASRS v1.1)',
+    abbr: 'ASRS',
+    definition: 'The World Health Organization (WHO) validated brief screening tool assessing adult inattention, motor restlessness, and executive organization.',
+  },
+  Vanderbilt: {
+    term: 'NICHQ Vanderbilt ADHD Diagnostic Rating Scale',
+    abbr: 'Vanderbilt',
+    definition: 'A validated pediatric DSM rating instrument completed by parents to evaluate inattentive and hyperactive/impulsive behaviors in children aged 4 to 15.',
+  },
+  AQ10: {
+    term: 'Autism Spectrum Quotient (AQ-10)',
+    abbr: 'AQ-10',
+    definition: 'A brief 10-item screening questionnaire recommended by NICE guidelines to assess traits associated with the autism spectrum across social, communication, and detail-focus domains.',
+  },
+  CATQ: {
+    term: 'Camouflaging Autistic Traits Questionnaire (CAT-Q)',
+    abbr: 'CAT-Q',
+    definition: 'A 25-item psychometric measure quantifying social compensation, masking, and assimilation strategies used to consciously manage social situations.',
+  },
+  MChat: {
+    term: 'M-CHAT-R/F Toddler Autism Screener',
+    abbr: 'M-CHAT-R/F',
+    definition: 'A validated 20-item parent observation screener for early autism risk and developmental milestones in toddlers aged 16 to 30 months.',
+  },
 };
