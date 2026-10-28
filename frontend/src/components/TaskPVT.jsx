@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function TaskPVT({ onComplete, onRoundUpdate }) {
+  const { t } = useLanguage();
   // state: 'IDLE', 'WAITING', 'TRIGGERED', 'EARLY', 'ROUND_DONE', 'FINISHED'
   const [state, setState] = useState('IDLE');
   const [currentRound, setCurrentRound] = useState(1);
@@ -166,28 +168,28 @@ export default function TaskPVT({ onComplete, onRoundUpdate }) {
 
           <h1 className="font-display text-[38px] font-bold text-on-surface mb-2 tracking-tight">
             {state === 'WAITING'
-              ? 'HOLD...'
+              ? t('pvtHold')
               : state === 'TRIGGERED'
-              ? 'PRESS SPACEBAR!'
+              ? t('pvtClick')
               : state === 'EARLY'
-              ? 'Too Early'
-              : 'Reaction Time Test'}
+              ? t('pvtEarly')
+              : 'Speed Test'}
           </h1>
 
           <p className="font-body-lg text-[16px] text-on-surface-variant mb-6 max-w-md leading-relaxed">
             {state === 'WAITING' ? (
               <span className="font-bold text-on-tertiary-container">
-                STAY FOCUSED... PRESS SPACEBAR WHEN GREEN
+                {t('pvtHold')}
               </span>
             ) : state === 'TRIGGERED' ? (
               <span className="font-bold text-on-secondary-container">
-                PRESS SPACEBAR NOW!
+                {t('pvtClick')}
               </span>
             ) : state === 'EARLY' ? (
-              <span>You pressed spacebar too early. Press spacebar to retry.</span>
+              <span>{t('pvtEarly')}</span>
             ) : (
               <span>
-                When the indicator turns <span className="font-bold text-red-600">red</span> to <span className="font-bold text-green-600">green</span>, press the spacebar.
+                {t('pvtHold')}
               </span>
             )}
           </p>
@@ -213,14 +215,14 @@ export default function TaskPVT({ onComplete, onRoundUpdate }) {
               </span>
               <span>
                 {state === 'WAITING'
-                  ? 'Wait for Green...'
+                  ? t('pvtHold')
                   : state === 'TRIGGERED'
-                  ? 'Press Spacebar!'
+                  ? t('pvtClick')
                   : state === 'EARLY'
-                  ? 'Too Early — Press Spacebar'
+                  ? t('pvtEarly')
                   : state === 'ROUND_DONE'
-                  ? `Next Trial (${lastRt} ms) — Press Spacebar`
-                  : 'Press Spacebar'}
+                  ? `${t('next')} (${lastRt} ms)`
+                  : t('startTest')}
               </span>
             </button>
           </div>

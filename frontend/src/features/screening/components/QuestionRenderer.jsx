@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import LicensingGateModal from './LicensingGateModal';
 import { isInstrumentRunnable, getInstrumentLicensing } from '../engine/textLoader';
+import { useLanguage } from '../../../context/LanguageContext';
+import { speakInstruction, stopAllSpeech, isAudioPlaying } from '../../../services/speechEngine';
 
 export default function QuestionRenderer({
   testConfig,
@@ -14,11 +16,19 @@ export default function QuestionRenderer({
   isLastQuestion,
   onCancel,
 }) {
+  const { language, t, getQuestion, getScale } = useLanguage();
   const [isLicensingModalOpen, setIsLicensingModalOpen] = useState(false);
+  const [isReading, setIsReading] = useState(false);
   const isRunnable = isInstrumentRunnable(testConfig?.id);
   const licenseInfo = getInstrumentLicensing(testConfig?.id);
 
   const progressPct = Math.round(((currentIndex + 1) / (totalItems || 1)) * 100);
+
+  // Stop reading audio on question change or unmount
+  useEffect(() => {
+    stopAllSpeech();
+    setIsReading(false);
+  }, [currentIndex, language]);
 
   // Keyboard shortcut support (1-7 for options, Enter for next, ArrowLeft for prev)
   useEffect(() => {
@@ -83,6 +93,26 @@ export default function QuestionRenderer({
     );
   }
 
+  // Get simple, natural question text in chosen language
+  const translatedQuestionText = getQuestion(item);
+
+  // Toggle Read Question
+  const handleToggleRead = () => {
+    if (isReading || isAudioPlaying()) {
+      stopAllSpeech();
+      setIsReading(false);
+    } else {
+      setIsReading(true);
+      speakInstruction({
+        text: translatedQuestionText,
+        language,
+        onStart: () => setIsReading(true),
+        onEnd: () => setIsReading(false),
+        onError: () => setIsReading(false),
+      });
+    }
+  };
+
   return (
     <div className="max-w-[780px] mx-auto w-full flex flex-col gap-5 py-4">
       {/* Top Header & Progress */}
@@ -98,7 +128,7 @@ export default function QuestionRenderer({
           )}
         </div>
         <span className="font-telemetry-data text-[13px] text-on-surface-variant">
-          Question <strong>{currentIndex + 1}</strong> of {totalItems}
+          {t('questionProgress')} <strong>{currentIndex + 1}</strong> {t('ofTotal')} {totalItems}
         </span>
       </div>
 
@@ -110,19 +140,41 @@ export default function QuestionRenderer({
         />
       </div>
 
-      {/* Main Question Card */}
+      {/* Main Question Card with Dedicated Read Question Button */}
       <div className="bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-surface-container-high/60">
-        <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant mb-2 block">
-          Item #{item.number}
-        </span>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+            {t('questionProgress')} #{item.number}
+          </span>
+
+          {/* Dedicated Read Question Button */}
+          <button
+            onClick={handleToggleRead}
+            type="button"
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm ${
+              isReading
+                ? 'bg-error-container text-on-error-container hover:bg-error hover:text-on-error animate-pulse'
+                : 'bg-primary/10 hover:bg-primary/20 text-primary'
+            }`}
+            title={isReading ? t('stopReading') : t('readQuestion')}
+          >
+            <span className="material-symbols-outlined text-[16px]">
+              {isReading ? 'stop' : 'volume_up'}
+            </span>
+            <span>{isReading ? t('stopReading') : t('readQuestion')}</span>
+          </button>
+        </div>
+
         <h3 className="font-headline-sm text-[22px] font-bold text-on-surface leading-snug mb-8">
-          {item.text}
+          {translatedQuestionText}
         </h3>
 
-        {/* Answer Options Radio List */}
+        {/* Answer Options Radio List with Simplified Language Labels */}
         <div className="flex flex-col gap-3 mb-8">
           {testConfig.scale.map((option, idx) => {
             const isSelected = currentValue === option.value;
+            const translatedLabel = getScale(option.label);
+
             return (
               <button
                 key={String(option.value)}
@@ -142,7 +194,7 @@ export default function QuestionRenderer({
                   >
                     {isSelected && <span className="w-2 h-2 rounded-full bg-white"></span>}
                   </div>
-                  <span className="font-body-md text-[15px]">{option.label}</span>
+                  <span className="font-body-md text-[15px]">{translatedLabel}</span>
                 </div>
 
                 <span className="font-telemetry-data text-[11px] text-on-surface-variant font-bold px-2 py-0.5 rounded bg-surface-container-highest uppercase">
@@ -153,7 +205,7 @@ export default function QuestionRenderer({
           })}
         </div>
 
-        {/* Card Footer Controls */}
+        {/* Card Footer Navigation Controls */}
         <div className="flex items-center justify-between pt-4 border-t border-surface-container-high/60">
           <button
             onClick={onPrev}
@@ -162,7 +214,7 @@ export default function QuestionRenderer({
             type="button"
           >
             <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-            <span>Previous</span>
+            <span>{t('navPrevious')}</span>
           </button>
 
           <button
@@ -171,7 +223,7 @@ export default function QuestionRenderer({
             className="px-6 py-2.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container disabled:opacity-40 font-headline-sm text-[14px] font-semibold transition-all flex items-center gap-2 shadow-sm"
             type="button"
           >
-            <span>{isLastQuestion ? 'Complete Screener' : 'Next Question'}</span>
+            <span>{isLastQuestion ? t('navComplete') : t('navNext')}</span>
             <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
         </div>

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import ScreeningDisclaimer from './ScreeningDisclaimer';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export default function AgeRouterModal({ onRouteSelected, onSkip }) {
+  const { t } = useLanguage();
   const [respondentType, setRespondentType] = useState('adult'); // 'adult' or 'child'
   const [childAgeGroup, setChildAgeGroup] = useState('toddler'); // 'toddler' or 'older'
   const [childNickname, setChildNickname] = useState('');
@@ -41,17 +43,17 @@ export default function AgeRouterModal({ onRouteSelected, onSkip }) {
       <div className="bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-surface-container-high/60 text-center">
         <div className="inline-flex items-center gap-2 mb-3">
           <span className="px-2.5 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed font-label-caps text-[11px] font-bold uppercase">
-            Part 2 of 2: Behavioral Screener
+            {t('pathwayStep')}
           </span>
           <span className="px-2.5 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant font-label-caps text-[11px] font-bold uppercase">
-            100% Client-Side Privacy
+            100% Private
           </span>
         </div>
         <h2 className="font-headline-lg text-[26px] font-bold text-on-surface mb-2">
-          Age & Participant Adaptive Router
+          {t('pathwayStep')}
         </h2>
         <p className="font-body-md text-[14px] text-on-surface-variant max-w-xl mx-auto mb-4 leading-relaxed">
-          Cognitive tests are complete. To provide accurate, age-validated behavioral questionnaires for ADHD and Autism traits, please select who this evaluation is for.
+          {t('voiceAgentScopeNotice')}
         </p>
 
         <ScreeningDisclaimer compact={true} />
@@ -60,7 +62,7 @@ export default function AgeRouterModal({ onRouteSelected, onSkip }) {
       {/* Choice Panel */}
       <div className="bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-surface-container-high/60">
         <h3 className="font-headline-sm text-[16px] font-bold text-on-surface mb-4">
-          1. Who is this screening being completed for?
+          {t('pathwayStep')}
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -78,12 +80,12 @@ export default function AgeRouterModal({ onRouteSelected, onSkip }) {
                 <span className="material-symbols-outlined text-[20px]">person</span>
               </div>
               <div>
-                <h4 className="font-headline-sm text-[16px] font-bold text-on-surface">Myself (Adult 18+)</h4>
-                <span className="font-label-caps text-[11px] uppercase text-on-surface-variant">Self-Assessment</span>
+                <h4 className="font-headline-sm text-[16px] font-bold text-on-surface">{t('pathwayAdultTitle')}</h4>
+                <span className="font-label-caps text-[11px] uppercase text-on-surface-variant">Self-Check</span>
               </div>
             </div>
             <p className="font-body-sm text-[13px] text-on-surface-variant leading-relaxed">
-              Standard adult AuDHD battery: ASRS-v1.1 (ADHD screener) + AQ-10 (Autism screener).
+              {t('pathwayAdultSubtitle')}
             </p>
           </div>
 
@@ -101,21 +103,21 @@ export default function AgeRouterModal({ onRouteSelected, onSkip }) {
                 <span className="material-symbols-outlined text-[20px]">child_care</span>
               </div>
               <div>
-                <h4 className="font-headline-sm text-[16px] font-bold text-on-surface">My Child (Parent Report)</h4>
-                <span className="font-label-caps text-[11px] uppercase text-on-surface-variant">Caregiver Assisted</span>
+                <h4 className="font-headline-sm text-[16px] font-bold text-on-surface">{t('pathwayPediatricTitle')}</h4>
+                <span className="font-label-caps text-[11px] uppercase text-on-surface-variant">Caregiver Screener</span>
               </div>
             </div>
             <p className="font-body-sm text-[13px] text-on-surface-variant leading-relaxed">
-              Pediatric developmental instruments tailored by age range (16–30m M-CHAT-R/F or Ages 4–15).
+              {t('pathwayPediatricSubtitle')}
             </p>
           </div>
         </div>
 
-        {/* Child Sub-options */}
+        {/* If Child selected, ask toddler vs child */}
         {respondentType === 'child' && (
-          <div className="p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 mb-6 flex flex-col gap-4">
-            <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-secondary">
-              Select Child's Age Group:
+          <div className="p-4 rounded-xl bg-surface-container-low border border-surface-container-high/60 mb-6 flex flex-col gap-3">
+            <span className="font-label-caps text-[11px] font-bold uppercase text-secondary">
+              Select Age Group:
             </span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
@@ -128,7 +130,7 @@ export default function AgeRouterModal({ onRouteSelected, onSkip }) {
                 type="button"
               >
                 <div className="font-headline-sm text-[14px]">Toddler (16–30 months)</div>
-                <div className="text-[12px] opacity-80">M-CHAT-R/F Validated Screener</div>
+                <div className="text-[12px] opacity-80">M-CHAT-R/F Milestone Screener</div>
               </button>
 
               <button
@@ -166,7 +168,7 @@ export default function AgeRouterModal({ onRouteSelected, onSkip }) {
             className="px-4 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high font-body-sm text-[13px] transition-colors"
             type="button"
           >
-            Skip Screener (View Cognitive Telemetry Only)
+            {t('skipTest')}
           </button>
 
           <button
@@ -174,7 +176,7 @@ export default function AgeRouterModal({ onRouteSelected, onSkip }) {
             className="px-6 py-2.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[15px] font-semibold hover:bg-primary-container transition-all flex items-center gap-2 shadow-sm"
             type="button"
           >
-            <span>Proceed to Behavioral Screener</span>
+            <span>{t('continue')}</span>
             <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
         </div>

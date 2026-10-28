@@ -25,7 +25,10 @@ import { useMotorLogger } from './hooks/useMotorLogger';
 import { computePercentile } from './features/report/math';
 import { generateIntegratedFindings } from './features/report/integrate';
 
-export default function App() {
+import { LanguageProvider, useLanguage } from './context/LanguageContext';
+import VoiceAgent from './components/VoiceAgent';
+
+function AppContent() {
   // Navigation & Step State
   // Steps: 'preflight', 'task_pvt', 'task_stroop', 'task_digit_span', 'task_verbal', 'age_router', 'questionnaire', 'mchat_followup', 'analyzing', 'dashboard', 'attention_lab'
   const [currentStep, setCurrentStep] = useState('preflight');
@@ -35,6 +38,7 @@ export default function App() {
   const [analyzingStatusText, setAnalyzingStatusText] = useState('');
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
+
 
   // Micro Task Tracker State
   const [activeRound, setActiveRound] = useState(1);
@@ -480,22 +484,7 @@ export default function App() {
         onSelectModule={handleSelectModule}
       />
 
-      {/* Persistent hidden video element for continuous background WebAssembly tracking */}
-      <video
-        ref={persistentVideoRef}
-        playsInline
-        muted
-        autoPlay
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          right: 0,
-          width: '1px',
-          height: '1px',
-          opacity: 0,
-          pointerEvents: 'none',
-        }}
-      />
+
 
       {/* 3. MAIN WORKSPACE AREA (OFFSET BY SIDEBAR & HEADER) */}
       <div className="pl-64">
@@ -652,6 +641,7 @@ export default function App() {
                   {/* Right Column (4 cols): Live Clinical Telemetry Rail */}
                   <div className="xl:col-span-4 flex flex-col gap-4">
                     <ClinicalTelemetryRail
+                      currentStep={currentStep}
                       gazeTracker={gazeTracker}
                       acousticAnalyzer={acousticAnalyzer}
                       videoStreamRef={persistentVideoRef}
@@ -790,16 +780,38 @@ export default function App() {
         </main>
       </div>
 
-      {/* Hidden persistent video element for MediaPipe face tracking */}
+      {/* Persistent background video element for real-time vision tracking */}
       <video
         ref={persistentVideoRef}
         playsInline
         muted
         autoPlay
-        style={{ position: 'fixed', top: -9999, left: -9999, width: 320, height: 240, opacity: 0, pointerEvents: 'none' }}
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          right: 0,
+          width: '320px',
+          height: '240px',
+          opacity: 0.001,
+          pointerEvents: 'none',
+          zIndex: -50,
+        }}
         aria-hidden="true"
       />
+
+
+
+      {/* Multilingual AuDHD & Cognitive Health Voice Agent */}
+      <VoiceAgent />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }
 

@@ -1,27 +1,42 @@
 /**
  * transcriptionService.js
  * Multi-provider speech transcription service for NeuroNova Phonation & Verbal Fluency.
- * Supports Google Gemini (via audio/wav), Groq Whisper Large v3, and OpenAI Whisper.
+ * Supports Groq Whisper Large v3 (ultra-fast, highly accurate), Google Gemini, and OpenAI Whisper.
  */
 
 const STORAGE_KEY = 'neuro_speech_api_key';
+const STORAGE_KEY_GROQ = 'neuro_groq_api_key';
 
 export function getStoredApiKey() {
-  if (typeof window === 'undefined') return '';
-  return (
-    localStorage.getItem(STORAGE_KEY) ||
-    import.meta.env.VITE_GROQ_API_KEY ||
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    ''
-  );
+  const envGroq =
+    typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_GROQ_API_KEY || '') : '';
+  if (envGroq) return envGroq;
+
+  const envGemini =
+    typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_GEMINI_API_KEY || '') : '';
+  if (envGemini) return envGemini;
+
+  if (typeof window !== 'undefined') {
+    const groqStored = localStorage.getItem(STORAGE_KEY_GROQ);
+    if (groqStored) return groqStored;
+    const speechStored = localStorage.getItem(STORAGE_KEY);
+    if (speechStored) return speechStored;
+  }
+
+  return '';
 }
 
 export function setStoredApiKey(key) {
   if (typeof window === 'undefined') return;
-  if (!key || !key.trim()) {
+  const trimmed = (key || '').trim();
+  if (!trimmed) {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY_GROQ);
   } else {
-    localStorage.setItem(STORAGE_KEY, key.trim());
+    localStorage.setItem(STORAGE_KEY, trimmed);
+    if (trimmed.startsWith('gsk_')) {
+      localStorage.setItem(STORAGE_KEY_GROQ, trimmed);
+    }
   }
 }
 
@@ -31,7 +46,7 @@ export function detectKeyProvider(key) {
   if (trimmed.startsWith('gsk_')) return 'groq';
   if (trimmed.startsWith('sk-')) return 'openai';
   if (trimmed.startsWith('AIza') || trimmed.startsWith('AQ.') || trimmed.includes('.')) return 'gemini';
-  return 'gemini';
+  return 'groq';
 }
 
 /**
@@ -180,7 +195,7 @@ async function transcribeWithGemini(audioBlob, apiKey) {
 }
 
 /**
- * Transcribe audio using Groq Whisper Large v3 Turbo (high speed, CORS supported)
+ * Transcribe audio using Groq Whisper Large v3 Turbo (ultra-fast, CORS supported)
  */
 async function transcribeWithGroq(audioBlob, apiKey) {
   const formData = new FormData();
@@ -281,10 +296,10 @@ export async function transcribeAudioBlob(audioBlob, explicitKey = '') {
 
   if (key) {
     const provider = detectKeyProvider(key);
-    if (provider === 'gemini') {
-      return await transcribeWithGemini(audioBlob, key);
-    } else if (provider === 'groq') {
+    if (provider === 'groq') {
       return await transcribeWithGroq(audioBlob, key);
+    } else if (provider === 'gemini') {
+      return await transcribeWithGemini(audioBlob, key);
     } else if (provider === 'openai') {
       return await transcribeWithOpenAI(audioBlob, key);
     }

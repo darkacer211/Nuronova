@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useLanguage } from '../context/LanguageContext';
 
 const COLOR_OPTIONS = [
-  { name: 'RED', color: '#dc2626', bg: 'bg-red-500', key: 'd' },
-  { name: 'BLUE', color: '#2563eb', bg: 'bg-blue-600', key: 'f' },
-  { name: 'GREEN', color: '#059669', bg: 'bg-emerald-600', key: 'j' },
-  { name: 'YELLOW', color: '#d97706', bg: 'bg-amber-500', key: 'k' },
+  { nameKey: 'colorRed', defaultName: 'RED', color: '#dc2626', bg: 'bg-red-500', key: 'd' },
+  { nameKey: 'colorBlue', defaultName: 'BLUE', color: '#2563eb', bg: 'bg-blue-600', key: 'f' },
+  { nameKey: 'colorGreen', defaultName: 'GREEN', color: '#059669', bg: 'bg-emerald-600', key: 'j' },
+  { nameKey: 'colorYellow', defaultName: 'YELLOW', color: '#d97706', bg: 'bg-amber-500', key: 'k' },
 ];
 
 export default function TaskStroop({ onComplete, onRoundUpdate }) {
+  const { t } = useLanguage();
   const [phase, setPhase] = useState('instructions'); // instructions, trial, feedback, finished
   const [trialIndex, setTrialIndex] = useState(0);
   const [currentStimulus, setCurrentStimulus] = useState(null);
@@ -186,17 +188,17 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
                 <span className="material-symbols-outlined text-[32px]">psychology</span>
               </div>
               <h1 className="font-display text-[36px] font-bold text-on-surface mb-2 tracking-tight">
-                Stroop Executive Control
+                Color Focus Test
               </h1>
               <p className="font-body-lg text-[15px] text-on-surface-variant mb-6 max-w-md leading-relaxed">
-                Name the <strong className="text-primary font-bold">INK COLOR</strong> of the word, ignore the text reading. Strike the matching color key as fast as you can.
+                {t('stroopInstructions')}
               </p>
               <button
                 onClick={() => runTrial(0)}
                 className="w-full sm:w-auto min-w-[300px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all"
                 type="button"
               >
-                <span>Begin Test (Press Space or Click)</span>
+                <span>{t('startTest')}</span>
               </button>
             </div>
           ) : (
@@ -234,7 +236,9 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
                     type="button"
                   >
                     <span className="w-5 h-5 rounded-full shadow-sm" style={{ backgroundColor: btn.color }}></span>
-                    <span className="font-headline-sm text-[13px] font-bold text-on-surface">{btn.name}</span>
+                    <span className="font-headline-sm text-[13px] font-bold text-on-surface">
+                      {t(btn.nameKey) || btn.defaultName}
+                    </span>
                     <span className="font-telemetry-data text-[10px] text-on-surface-variant font-semibold px-2 py-0.5 rounded bg-surface-container-highest uppercase">
                       [{btn.key.toUpperCase()}]
                     </span>

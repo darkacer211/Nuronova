@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
+  const { t } = useLanguage();
   // state: 'instructions', 'memorizing', 'recalling', 'feedback', 'finished'
   const [phase, setPhase] = useState('instructions');
   const [currentLevel, setCurrentLevel] = useState(3);
@@ -157,17 +159,13 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
           <div className="flex items-center gap-1.5 bg-surface-container-low px-3 py-1 rounded-full text-on-surface-variant border border-surface-container-high/60 shadow-sm">
             <span className="material-symbols-outlined text-[16px] text-primary">layers</span>
             <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider">
-              Paradigm #DSP-03
+              {t('domainMemory')}
             </span>
           </div>
 
           <div className="flex items-center gap-3">
             <span className="font-telemetry-data text-[12px] text-on-surface-variant">
-              Sequence Span: <strong className="text-primary">{currentLevel} Digits</strong>
-            </span>
-            <span className="w-1 h-1 rounded-full bg-outline-variant"></span>
-            <span className="font-telemetry-data text-[12px] text-on-surface-variant">
-              Errors: <strong className={strikes > 0 ? 'text-tertiary' : 'text-secondary'}>{strikes} of 2</strong>
+              {t('digitSpanLength')}: <strong className="text-primary">{currentLevel}</strong>
             </span>
           </div>
         </div>
@@ -180,17 +178,17 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
                 <span className="material-symbols-outlined text-[32px]">dialpad</span>
               </div>
               <h1 className="font-display text-[36px] font-bold text-on-surface mb-2 tracking-tight">
-                Working Memory Digit Span
+                Number Memory Test
               </h1>
               <p className="font-body-lg text-[15px] text-on-surface-variant mb-6 max-w-md leading-relaxed">
-                Watch the screen as digits flash one-by-one. When the sequence ends, type the exact numbers in order using your keyboard or the on-screen keypad.
+                {t('digitSpanWatch')}
               </p>
               <button
                 onClick={() => playSequence(3)}
                 className="w-full sm:w-auto min-w-[320px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all"
                 type="button"
               >
-                <span>Start Memorization (Level 3)</span>
+                <span>{t('startTest')} (3 Digits)</span>
               </button>
             </div>
           ) : phase === 'memorizing' ? (

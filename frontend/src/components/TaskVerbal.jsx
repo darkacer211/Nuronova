@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLanguage } from '../context/LanguageContext';
 import {
   transcribeAudioBlob,
   getStoredApiKey,
@@ -149,6 +150,7 @@ function normalizeAnimalWord(raw) {
 }
 
 export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
+  const { t } = useLanguage();
   const [phase, setPhase] = useState('instructions'); // instructions, recording, transcribing, review
   const [secondsRemaining, setSecondsRemaining] = useState(DURATION_SECONDS);
   const [liveTranscript, setLiveTranscript] = useState('');
@@ -158,8 +160,6 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
 
   // API Key State & Management
   const [apiKey, setApiKey] = useState(getStoredApiKey());
-  const [tempApiKey, setTempApiKey] = useState(getStoredApiKey());
-  const [showApiModal, setShowApiModal] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionNotice, setTranscriptionNotice] = useState('');
   const [lastAudioBlob, setLastAudioBlob] = useState(null);
@@ -190,13 +190,6 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
         setRecognizedWords((prev) => (prev.includes(norm) ? prev : [...prev, norm]));
       }
     });
-  };
-
-  const handleSaveApiKey = () => {
-    const trimmed = tempApiKey.trim();
-    setStoredApiKey(trimmed);
-    setApiKey(trimmed);
-    setShowApiModal(false);
   };
 
   const startTask = () => {
@@ -335,7 +328,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
     }
     const effectiveKey = apiKey || getStoredApiKey();
     if (!effectiveKey) {
-      setShowApiModal(true);
+      setTranscriptionNotice('Audio transcription API key not configured in environment.');
       return;
     }
 
@@ -419,26 +412,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* API Key Configuration Trigger */}
-            <button
-              onClick={() => setShowApiModal(!showApiModal)}
-              type="button"
-              className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                apiKey
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-primary/10 border-primary/30 text-primary hover:bg-primary/20'
-              }`}
-              title="Click to configure Groq Whisper or Gemini API Key for speech transcription"
-            >
-              <span className="material-symbols-outlined text-[14px]">
-                {apiKey ? 'check_circle' : 'key'}
-              </span>
-              <span>
-                {apiKey
-                  ? `${provider === 'groq' ? 'Groq Whisper' : provider === 'gemini' ? 'Gemini AI' : 'OpenAI Whisper'} Active`
-                  : 'Add API Key'}
-              </span>
-            </button>
+
 
             <span className="w-1 h-1 rounded-full bg-outline-variant"></span>
             <span className="font-telemetry-data text-[12px] text-on-surface-variant">
@@ -451,54 +425,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
           </div>
         </div>
 
-        {/* API Key Modal / Drawer */}
-        {showApiModal && (
-          <div className="w-full max-w-lg mx-auto my-3 p-4 rounded-xl bg-surface-container border border-surface-container-high text-left relative z-20 shadow-md">
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-label-caps text-[11px] font-bold uppercase text-primary flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[15px]">key</span>
-                Speech Transcription API Key
-              </span>
-              <button
-                onClick={() => setShowApiModal(false)}
-                type="button"
-                className="text-on-surface-variant hover:text-on-surface cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[16px]">close</span>
-              </button>
-            </div>
-            <p className="text-[12px] text-on-surface-variant mb-2 leading-relaxed">
-              Add your <strong className="text-on-surface">Groq API Key</strong> (<code className="text-primary font-mono">gsk_...</code>) or <strong className="text-on-surface">Gemini Key</strong> (<code className="text-primary font-mono">AIza...</code>). Groq Whisper Large v3 is 100% free and transcribes in ~400ms.
-            </p>
-            <div className="flex gap-2 mb-2">
-              <input
-                type="password"
-                placeholder="Paste API Key here (e.g. gsk_... or AIza...)"
-                value={tempApiKey}
-                onChange={(e) => setTempApiKey(e.target.value)}
-                className="flex-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-surface-container-high text-[13px] text-on-surface outline-none focus:border-primary font-mono"
-              />
-              <button
-                onClick={handleSaveApiKey}
-                type="button"
-                className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-bold text-[12px] transition-colors cursor-pointer"
-              >
-                Save
-              </button>
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-on-surface-variant">
-              <span>Saved locally in your browser.</span>
-              <a
-                href="https://console.groq.com/keys"
-                target="_blank"
-                rel="noreferrer"
-                className="text-primary hover:underline flex items-center gap-0.5"
-              >
-                Get free Groq key <span className="material-symbols-outlined text-[12px]">open_in_new</span>
-              </a>
-            </div>
-          </div>
-        )}
+
 
         {/* Center Stimulus Core Focus Area */}
         <div className="flex flex-col items-center max-w-xl my-auto py-3 relative z-10 w-full">
@@ -508,10 +435,10 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
                 <span className="material-symbols-outlined text-[32px]">graphic_eq</span>
               </div>
               <h1 className="font-display text-[32px] font-bold text-on-surface mb-2 tracking-tight">
-                Phonation & Verbal Fluency
+                Voice & Word Fluency Test
               </h1>
               <p className="font-body-lg text-[15px] text-on-surface-variant mb-6 max-w-md leading-relaxed">
-                When the test starts, speak aloud and name as many <strong className="text-primary font-bold">ANIMALS</strong> as you can in 25 seconds (e.g. dog, cat, lion, dolphin, sparrow).
+                {t('verbalPrompt')}
               </p>
               <button
                 onClick={startTask}
@@ -519,7 +446,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
                 type="button"
               >
                 <span className="material-symbols-outlined text-[20px]">mic</span>
-                <span>Begin Voice Recording</span>
+                <span>{t('verbalStart')}</span>
               </button>
             </div>
           ) : phase === 'recording' ? (
@@ -625,15 +552,7 @@ export default function TaskVerbal({ acousticAnalyzer, onComplete }) {
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container border border-surface-container-high text-on-surface-variant text-[11px] my-1">
                   <span className="material-symbols-outlined text-[14px] text-primary">auto_awesome</span>
                   <span>{transcriptionNotice}</span>
-                  {!apiKey && (
-                    <button
-                      onClick={() => setShowApiModal(true)}
-                      type="button"
-                      className="text-primary font-bold hover:underline ml-1 cursor-pointer"
-                    >
-                      Add Key
-                    </button>
-                  )}
+                  
                 </div>
               ) : null}
 

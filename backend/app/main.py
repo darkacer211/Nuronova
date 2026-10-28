@@ -181,6 +181,81 @@ def analyze_gaze(payload: GazeAnalysisPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gaze analysis error: {str(e)}")
 
+# --- Dedicated Voice Agent & Natural Audio Synthesis Endpoints ---
+
+class VoiceAgentChatPayload(BaseModel):
+    message: str
+    language: Optional[str] = "en"
+    history: Optional[List[Dict[str, str]]] = None
+    api_key: Optional[str] = None
+
+class AudioSynthesizePayload(BaseModel):
+    text: str
+    language: Optional[str] = "en"
+    test_key: Optional[str] = None
+    api_key: Optional[str] = None
+
+@app.post("/api/v1/voice-agent/chat")
+async def voice_agent_chat(payload: VoiceAgentChatPayload):
+    """
+    Dedicated AuDHD and Cognitive Health Voice Agent conversational endpoint.
+    Strictly constrained to Autism, ADHD, and cognitive wellness inquiries.
+    """
+    try:
+        from app.voice_agent import generate_voice_agent_reply
+        return await generate_voice_agent_reply(
+            message=payload.message,
+            language=payload.language or "en",
+            history=payload.history,
+            api_key=payload.api_key
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Voice agent error: {str(e)}")
+
+class EphemeralTokenRequest(BaseModel):
+    api_key: Optional[str] = None
+
+@app.post("/api/v1/voice-agent/token")
+@app.get("/api/v1/voice-agent/token")
+async def voice_agent_ephemeral_token(api_key: Optional[str] = None, payload: Optional[EphemeralTokenRequest] = None):
+    """
+    Generate or retrieve pre-cached ephemeral token for the Gemini Multimodal Live API.
+    Pre-allocating tokens eliminates connection delay so users can converse with minimum latency.
+    """
+    key = (payload.api_key if payload else None) or api_key
+    try:
+        from app.voice_agent import get_or_create_ephemeral_token
+        return await get_or_create_ephemeral_token(api_key=key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ephemeral token error: {str(e)}")
+
+@app.post("/api/v1/audio/synthesize")
+async def audio_synthesize(payload: AudioSynthesizePayload):
+    """
+    Synthesize and cache natural spoken audio via Google Gemini Live / REST.
+    Stores files in backend/app/audio_cache/ for instant playback across tests.
+    """
+    try:
+        from app.audio_service import synthesize_gemini_audio
+        return await synthesize_gemini_audio(
+            text=payload.text,
+            language=payload.language or "en",
+            test_key=payload.test_key,
+            api_key=payload.api_key
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio synthesis error: {str(e)}")
+
+@app.get("/api/v1/audio/cache/{filename}")
+def stream_cached_audio(filename: str):
+    """Serve cached natural audio file."""
+    try:
+        from app.audio_service import get_cached_audio_file
+        return get_cached_audio_file(filename)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+

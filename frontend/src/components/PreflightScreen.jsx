@@ -1,4 +1,6 @@
 import React, { useState, useRef } from 'react';
+import { useLanguage } from '../context/LanguageContext';
+import logoImg from '../assets/logo.png';
 
 export default function PreflightScreen({
   onStartProtocol,
@@ -8,6 +10,7 @@ export default function PreflightScreen({
   acousticAnalyzer,
   onCameraStreamReady,
 }) {
+  const { t } = useLanguage();
   const [selectedPathway, setSelectedPathway] = useState('full'); // 'full' or 'toddler'
   const [pediatricAgeGroup, setPediatricAgeGroup] = useState('toddler'); // 'toddler' or 'child'
   const [cameraReady, setCameraReady] = useState(false);
@@ -69,33 +72,30 @@ export default function PreflightScreen({
       {/* 1. TOP CONSOLE META BANNER */}
       <div className="w-full bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-surface-container-high/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-primary shadow-sm">
-            <span className="material-symbols-outlined text-[24px]">vital_signs</span>
+          <div className="w-12 h-12 rounded-xl overflow-hidden shadow-sm flex items-center justify-center bg-surface-container-high/60 border border-surface-container-high">
+            <img src={logoImg} alt="NeuroNova Logo" className="w-full h-full object-contain" />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-primary">
-                Begin Assessment Console
+                {t('preflightBadge')}
               </span>
-
             </div>
             <h1 className="font-headline-sm text-[20px] font-bold text-on-surface tracking-tight mt-0.5">
-              Protocol Configuration & Sensor Calibration
+              {t('preflightTitle')}
             </h1>
           </div>
         </div>
-
-
       </div>
 
       {/* 2. CLINICAL PATHWAY SELECTION DECK WITH HOVER REVEALS */}
       <div className="w-full bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-surface-container-high/60 flex flex-col gap-6 transition-colors">
         <div className="flex flex-col gap-1">
           <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-primary">
-            Step 1 of 2: Pathway Allocation
+            {t('pathwayStep')}
           </span>
           <h2 className="font-headline-lg text-[24px] font-bold text-on-surface tracking-tight">
-            Select Clinical Assessment Protocol
+            {t('preflightTitle')}
           </h2>
         </div>
 
@@ -132,11 +132,11 @@ export default function PreflightScreen({
                 <div className="flex-1">
                   <div className="flex items-center gap-1.5">
                     <h3 className="font-headline-sm text-[18px] font-bold text-on-surface">
-                      Adults & Youth (Ages 16+)
+                      {t('pathwayAdultTitle')}
                     </h3>
                   </div>
                   <span className="font-body-sm text-[13px] text-on-surface-variant">
-                    Computer Reflex Tasks + Behavioral Screeners
+                    {t('pathwayAdultSubtitle')}
                   </span>
                 </div>
               </div>
@@ -144,19 +144,19 @@ export default function PreflightScreen({
               {/* Module Inclusion Badges */}
               <div className="flex flex-wrap gap-1.5 pt-4 border-t border-surface-container-high/60">
                 <span className="px-2 py-0.5 rounded bg-surface-container-lowest text-[11px] font-semibold text-on-surface border border-surface-container-high">
-                  Reaction Kinetics (PVT)
+                  Speed Test (PVT)
                 </span>
                 <span className="px-2 py-0.5 rounded bg-surface-container-lowest text-[11px] font-semibold text-on-surface border border-surface-container-high">
-                  Stroop Executive
+                  Color Focus (Stroop)
                 </span>
                 <span className="px-2 py-0.5 rounded bg-surface-container-lowest text-[11px] font-semibold text-on-surface border border-surface-container-high">
-                  Digit Span Buffer
+                  Memory Span
                 </span>
                 <span className="px-2 py-0.5 rounded bg-surface-container-lowest text-[11px] font-semibold text-on-surface border border-surface-container-high">
-                  Speech Phonation
+                  Voice Fluency
                 </span>
                 <span className="px-2 py-0.5 rounded bg-surface-container-lowest text-[11px] font-semibold text-on-surface border border-surface-container-high">
-                  ASRS-6 & AQ-10
+                  Habits Screener
                 </span>
               </div>
             </div>
@@ -193,11 +193,11 @@ export default function PreflightScreen({
                 <div className="flex-1">
                   <div className="flex items-center gap-1.5">
                     <h3 className="font-headline-sm text-[18px] font-bold text-on-surface">
-                      Toddlers (16–30m) & Children
+                      {t('pathwayPediatricTitle')}
                     </h3>
                   </div>
                   <span className="font-body-sm text-[13px] text-on-surface-variant">
-                    Standardized Parent Observation (M-CHAT-R/F)
+                    {t('pathwayPediatricSubtitle')}
                   </span>
                 </div>
               </div>
@@ -556,9 +556,9 @@ export default function PreflightScreen({
           <span>
             {selectedPathway === 'toddler'
               ? pediatricAgeGroup === 'toddler'
-                ? 'Launch Toddler M-CHAT-R/F Milestone Screener'
-                : 'Launch Pediatric AuDHD Battery (Ages 4–15)'
-              : 'Begin Full Assessment'}
+                ? 'Launch Toddler Screener'
+                : 'Launch Pediatric Screener'
+              : t('startAssessmentButton')}
           </span>
           <span className="material-symbols-outlined text-[22px]">arrow_forward</span>
         </button>
@@ -573,7 +573,7 @@ export default function PreflightScreen({
             className="w-4 h-4 rounded text-primary focus:ring-primary accent-primary cursor-pointer flex-shrink-0"
           />
           <label htmlFor="consentCheckbox" className="font-body-sm text-[13px] text-on-surface-variant cursor-pointer leading-normal select-none">
-            I understand this functional assessment measures reaction kinetics, working memory, and behavioral traits for cognitive awareness. It is non-diagnostic.
+            {t('privacyConsent')}
           </label>
         </div>
       </div>
