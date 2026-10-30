@@ -44,6 +44,7 @@ export async function preloadLiveToken(apiKey = '') {
       const key =
         apiKey ||
         (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+        (typeof window !== 'undefined' && localStorage.getItem('neuro_gemini_api_key')) ||
         '';
 
       const res = await fetch(`${backendUrl}/api/v1/voice-agent/token`, {
@@ -173,15 +174,23 @@ export async function transcribeAudioBuffer(wavBlob, language = 'en', groqApiKey
 }
 
 /**
- * Decode Base64 to Int16Array
+ * Decode Base64 to Int16Array safely without RangeError
  */
 function base64ToInt16(base64) {
-  const binary = window.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  try {
+    const binary = window.atob(base64);
+    const len = Math.floor(binary.length / 2);
+    const int16 = new Int16Array(len);
+    for (let i = 0; i < len; i++) {
+      const low = binary.charCodeAt(i * 2);
+      const high = binary.charCodeAt(i * 2 + 1);
+      int16[i] = (high << 8) | low;
+    }
+    return int16;
+  } catch (e) {
+    console.warn('base64ToInt16 error:', e);
+    return new Int16Array(0);
   }
-  return new Int16Array(bytes.buffer);
 }
 
 /**
@@ -200,6 +209,7 @@ export class GeminiLiveSession {
     this.apiKey =
       apiKey ||
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+      (typeof window !== 'undefined' && localStorage.getItem('neuro_gemini_api_key')) ||
       '';
     this.language = language;
     this.voiceName = voiceName || 'Aoede';
@@ -234,13 +244,26 @@ export class GeminiLiveSession {
     this.onStatusChange('connecting');
 
     try {
-      // 1. Fetch preloaded ephemeral token from backend
+      // 1. Fetch preloaded ephemeral token from backend if available
       const tokenData = await preloadLiveToken(this.apiKey);
-      let wsUrl = tokenData?.ws_url;
+      let wsUrl = null;
+
+      if (tokenData && tokenData.token && tokenData.ws_url) {
+        wsUrl = tokenData.ws_url;
+      } else {
+        const key =
+          this.apiKey ||
+          (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+          (typeof window !== 'undefined' && localStorage.getItem('neuro_gemini_api_key')) ||
+          '';
+
+        if (key) {
+          wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${key}`;
+        }
+      }
 
       if (!wsUrl) {
-        const key = this.apiKey;
-        wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained?access_token=${tokenData?.token || key}`;
+        throw new Error('Gemini API key is required for live audio call.');
       }
 
       // 2. Initialize Output Audio Context (24,000 Hz for high-fidelity Gemini speech)
@@ -454,10 +477,12 @@ When the call starts, greet the user warmly with one short sentence in ${langNam
         }
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event) => {
         this.isConnected = false;
         this.isSessionReady = false;
-        if (!this.ended) {
+        if (!this.ended && event && event.code !== 1000) {
+          this.onError(`Live calling closed (${event.code}).`);
+        } else if (!this.ended) {
           this.onStatusChange('ended');
         }
       };

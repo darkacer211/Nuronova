@@ -343,3 +343,4 @@ Where $Z_i$ represents the standardized score across:
 | **Encryption Standard**| PBKDF2-HMAC-SHA256 & AES-GCM Authenticated Encryption |
 | **Privacy Default** | Anonymous ephemeral in-memory (Zero disk storage) |
 | **Supported Languages**| English (`en`), Hindi (`hi`), Marathi (`mr`) |
+

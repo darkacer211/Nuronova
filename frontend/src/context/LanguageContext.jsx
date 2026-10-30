@@ -24,9 +24,13 @@ export function LanguageProvider({ children }) {
     return 'en';
   });
 
-  // 2. Gemini API key: Strictly read from environment variable (Vercel / .env)
+  // 2. Gemini API key: Read from environment variable (Vercel / .env) or stored key
   const [geminiApiKey] = useState(() => {
-    return (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || '';
+    return (
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+      (typeof window !== 'undefined' && localStorage.getItem('neuro_gemini_api_key')) ||
+      ''
+    );
   });
 
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
