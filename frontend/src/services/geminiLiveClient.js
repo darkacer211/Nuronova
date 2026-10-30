@@ -309,47 +309,16 @@ export class GeminiLiveSession {
         const micLevel = Math.min(100, Math.round(rms * 450));
         this.onVolume({ micLevel, agentLevel: this.isSpeaking ? 75 : 0 });
 
-        // --- ACOUSTIC ECHO & BARGE-IN FILTER ---
-        if (this.isSpeaking) {
-          if (micLevel >= 36) {
-            // User speaking over model: interrupt immediately
-            this.handleInterruption();
-          } else {
-            return; // Suppress speaker feedback
-          }
-        }
-
-        // --- DUAL-ENGINE VAD CAPTURE ---
-        const downsampled = downsampleTo16k(inputData, inputSampleRate, 16000);
-
-        if (micLevel >= 8) {
-          this.hasSpokenInTurn = true;
-          if (this.vadSilenceTimeout) {
-            clearTimeout(this.vadSilenceTimeout);
-            this.vadSilenceTimeout = null;
-          }
-          // Buffer audio samples during speech
-          for (let i = 0; i < downsampled.length; i++) {
-            this.speechSamplesBuffer.push(downsampled[i]);
-          }
-        } else if (this.hasSpokenInTurn) {
-          // Add brief silence tail (up to 300ms) to preserve ending consonants
-          if (this.speechSamplesBuffer.length < 80000) {
-            for (let i = 0; i < downsampled.length; i++) {
-              this.speechSamplesBuffer.push(downsampled[i]);
-            }
-          }
-
-          if (!this.vadSilenceTimeout) {
-            this.vadSilenceTimeout = setTimeout(() => {
-              this.processSpeechBuffer();
-            }, 550);
-          }
-        }
+        // While Nova is speaking, do not process microphone input to prevent self-interruption from speakers
+        if (this.isSpeaking) return;
       };
 
+      // Keep ScriptProcessorNode active in graph without outputting mic audio to speakers
+      const silentGain = this.inputAudioContext.createGain();
+      silentGain.gain.value = 0;
       micSource.connect(this.processorNode);
-      this.processorNode.connect(this.inputAudioContext.destination);
+      this.processorNode.connect(silentGain);
+      silentGain.connect(this.inputAudioContext.destination);
 
       // 5. Connect WebSocket
       this.ws = new WebSocket(wsUrl);
@@ -545,6 +514,17 @@ When the call starts, greet the user warmly with one short sentence in ${langNam
     if (!text || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     this.clearSpeechBuffer();
 
+    // Stop previous audio playback before beginning new turn
+    for (const source of this.activeAudioSources) {
+      try {
+        source.stop();
+      } catch {}
+    }
+    this.activeAudioSources = [];
+    if (this.outputAudioContext) {
+      this.nextAudioStartTime = this.outputAudioContext.currentTime;
+    }
+
     const turnPayload = {
       clientContent: {
         turns: [
@@ -558,7 +538,6 @@ When the call starts, greet the user warmly with one short sentence in ${langNam
     };
     try {
       this.ws.send(JSON.stringify(turnPayload));
-      this.handleInterruption();
     } catch (e) {
       console.warn('Send speech error:', e);
     }
