@@ -9,6 +9,7 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
   const [currentSequence, setCurrentSequence] = useState('');
   const [userInput, setUserInput] = useState('');
   const [activeDigit, setActiveDigit] = useState('');
+  const [currentDigitIndex, setCurrentDigitIndex] = useState(-1);
   const [feedback, setFeedback] = useState(null);
   const [strikes, setStrikes] = useState(0);
   const [maxSpanAchieved, setMaxSpanAchieved] = useState(0);
@@ -16,15 +17,41 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
   const displayTimerRef = useRef(null);
   const sequenceHistoryRef = useRef([]);
 
+  // Generate sequence of strictly UNIQUE, non-repeating digits
   const generateSequence = (length) => {
-    let str = '';
-    for (let i = 0; i < length; i++) {
-      str += Math.floor(Math.random() * 10).toString();
+    // Digits 1 to 9 (guarantees every single digit in the sequence is distinct)
+    const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+    // Fisher-Yates shuffle to randomize order without repetition
+    for (let i = digits.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [digits[i], digits[j]] = [digits[j], digits[i]];
     }
-    return str;
+
+    const chosen = digits.slice(0, length);
+
+    // Avoid simple sequential runs like 1-2-3 or 9-8-7
+    let isStraightRun = true;
+    for (let i = 1; i < chosen.length; i++) {
+      if (Math.abs(chosen[i] - chosen[i - 1]) !== 1) {
+        isStraightRun = false;
+        break;
+      }
+    }
+    if (isStraightRun && length >= 3) {
+      [chosen[0], chosen[1]] = [chosen[1], chosen[0]];
+    }
+
+    return chosen.join('');
   };
 
   const playSequence = useCallback((level) => {
+    if (displayTimerRef.current) {
+      clearTimeout(displayTimerRef.current);
+      clearInterval(displayTimerRef.current);
+      displayTimerRef.current = null;
+    }
+
     const seq = generateSequence(level);
     setCurrentSequence(seq);
     setUserInput('');
@@ -36,23 +63,38 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
     }
 
     let idx = 0;
+    setCurrentDigitIndex(0);
     setActiveDigit(seq[0]);
 
-    const interval = setInterval(() => {
-      idx += 1;
-      if (idx < seq.length) {
-        setActiveDigit(seq[idx]);
-      } else {
-        clearInterval(interval);
+    // Flash each digit for 820ms, with a distinct 160ms blank pause between digits
+    const runStep = () => {
+      displayTimerRef.current = setTimeout(() => {
+        // Blank interval between digits to make consecutive view crystal-clear
         setActiveDigit('');
-        setPhase('recalling');
-      }
-    }, 950);
 
-    displayTimerRef.current = interval;
+        displayTimerRef.current = setTimeout(() => {
+          idx += 1;
+          if (idx < seq.length) {
+            setCurrentDigitIndex(idx);
+            setActiveDigit(seq[idx]);
+            runStep();
+          } else {
+            setActiveDigit('');
+            setCurrentDigitIndex(-1);
+            setPhase('recalling');
+          }
+        }, 160);
+      }, 820);
+    };
+
+    runStep();
   }, [onRoundUpdate]);
 
   const finishTask = useCallback((finalSpan) => {
+    if (displayTimerRef.current) {
+      clearTimeout(displayTimerRef.current);
+      displayTimerRef.current = null;
+    }
     setPhase('finished');
     const span = Math.max(finalSpan, 3);
     setTimeout(() => {
@@ -116,7 +158,7 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
     } else if (val === 'submit') {
       handleSubmit();
     } else {
-      if (userInput.length < currentLevel + 2) {
+      if (userInput.length < currentLevel) {
         setUserInput((prev) => prev + val);
       }
     }
@@ -131,7 +173,7 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
       }
       if (phase !== 'recalling') return;
       if (e.key >= '0' && e.key <= '9') {
-        setUserInput((prev) => (prev.length < currentLevel + 2 ? prev + e.key : prev));
+        setUserInput((prev) => (prev.length < currentLevel ? prev + e.key : prev));
       } else if (e.key === 'Backspace') {
         setUserInput((prev) => prev.slice(0, -1));
       } else if (e.key === 'Enter') {
@@ -144,7 +186,11 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
 
   useEffect(() => {
     return () => {
-      if (displayTimerRef.current) clearInterval(displayTimerRef.current);
+      if (displayTimerRef.current) {
+        clearTimeout(displayTimerRef.current);
+        clearInterval(displayTimerRef.current);
+        displayTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -165,14 +211,26 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
 
           <div className="flex items-center gap-3">
             <span className="font-telemetry-data text-[12px] text-on-surface-variant">
-              {t('digitSpanLength')}: <strong className="text-primary">{currentLevel}</strong>
+              {t('digitSpanLength')}: <strong className="text-primary">{currentLevel} Digits</strong>
             </span>
           </div>
         </div>
 
         {/* Center Stimulus Core Focus Area */}
         <div className="flex flex-col items-center max-w-xl my-auto py-4 relative z-10 w-full">
-          {phase === 'instructions' ? (
+          {phase === 'finished' ? (
+            <div className="flex flex-col items-center py-8 animate-fadeIn">
+              <div className="w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4 shadow-sm">
+                <span className="material-symbols-outlined text-[36px]">check_circle</span>
+              </div>
+              <h2 className="font-display text-[26px] font-bold text-on-surface mb-1">
+                Number Memory Test Complete!
+              </h2>
+              <p className="text-[14px] text-on-surface-variant font-medium">
+                Maximum working memory span: <strong className="text-primary">{maxSpanAchieved || currentLevel} Digits</strong>
+              </p>
+            </div>
+          ) : phase === 'instructions' ? (
             <div className="flex flex-col items-center">
               <div className="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center text-primary mb-4 shadow-sm">
                 <span className="material-symbols-outlined text-[32px]">dialpad</span>
@@ -185,41 +243,52 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
               </p>
               <button
                 onClick={() => playSequence(3)}
-                className="w-full sm:w-auto min-w-[320px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all"
+                className="w-full sm:w-auto min-w-[320px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all cursor-pointer"
                 type="button"
               >
                 <span>{t('startTest')} (3 Digits)</span>
               </button>
             </div>
           ) : phase === 'memorizing' ? (
-            <div className="flex flex-col items-center py-6">
-              <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-primary mb-3">
-                Memorize Sequence ({currentLevel} Digits)
+            <div className="flex flex-col items-center py-6 animate-fadeIn">
+              <span className="font-label-caps text-[12px] font-bold uppercase tracking-wider text-primary mb-3">
+                Memorize Sequence ({currentLevel} Unique Digits)
               </span>
               <div className="w-36 h-36 rounded-3xl bg-surface-container-high border-2 border-primary/40 flex items-center justify-center shadow-lg transform scale-110 transition-all">
-                <span className="font-telemetry-numeric-lg text-[72px] font-black text-primary animate-pulse">
-                  {activeDigit}
+                <span className="font-telemetry-numeric-lg text-[72px] font-black text-primary animate-pulse select-none">
+                  {activeDigit || ''}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 mt-6">
+              {/* Active round progress indicators */}
+              <div className="flex items-center gap-2 mt-6">
                 {Array.from({ length: currentLevel }).map((_, i) => (
                   <span
                     key={i}
-                    className="w-2.5 h-2.5 rounded-full bg-primary-fixed-dim"
+                    className={`h-2.5 rounded-full transition-all duration-300 ${
+                      i === currentDigitIndex
+                        ? 'w-6 bg-primary shadow-sm'
+                        : i < currentDigitIndex
+                        ? 'w-2.5 bg-primary/40'
+                        : 'w-2.5 bg-surface-container-high'
+                    }`}
                   />
                 ))}
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center w-full max-w-sm">
-              <span className="font-label-caps text-[11px] font-bold uppercase tracking-wider text-secondary mb-2">
-                Recall Phase: Type Sequence in Order
+            <div className="flex flex-col items-center w-full max-w-sm animate-fadeIn">
+              <span className="font-label-caps text-[12px] font-bold uppercase tracking-wider text-secondary mb-2">
+                Recall Phase: Type {currentLevel} Digits in Order
               </span>
 
               {/* Input Display Box */}
-              <div className="w-full py-3 px-4 rounded-xl bg-surface-container-low border-2 border-primary/50 text-center mb-4 min-h-[56px] flex items-center justify-center shadow-inner">
+              <div className="w-full py-3 px-4 rounded-xl bg-surface-container-low border-2 border-primary/50 text-center mb-4 min-h-[58px] flex items-center justify-center shadow-inner">
                 <span className="font-telemetry-numeric-lg text-[32px] font-bold text-on-surface tracking-widest">
-                  {userInput || <span className="text-outline-variant text-[24px]">_ _ _</span>}
+                  {userInput || (
+                    <span className="text-outline-variant text-[24px] tracking-[0.3em] font-mono">
+                      {Array.from({ length: currentLevel }).map(() => '_').join(' ')}
+                    </span>
+                  )}
                 </span>
               </div>
 
@@ -241,7 +310,7 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
                   <button
                     key={num}
                     onClick={() => handleKeypadPress(String(num))}
-                    className="py-3 rounded-lg bg-surface-container-low hover:bg-surface-container-high border border-surface-container-high text-on-surface font-telemetry-numeric-lg text-[18px] font-bold transition-all active:scale-95 shadow-sm"
+                    className="py-3 rounded-lg bg-surface-container-low hover:bg-surface-container-high border border-surface-container-high text-on-surface font-telemetry-numeric-lg text-[18px] font-bold transition-all active:scale-95 shadow-sm cursor-pointer"
                     type="button"
                   >
                     {num}
@@ -249,7 +318,7 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
                 ))}
                 <button
                   onClick={() => handleKeypadPress('backspace')}
-                  className="py-3 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center transition-all active:scale-95"
+                  className="py-3 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center transition-all active:scale-95 cursor-pointer"
                   type="button"
                   title="Backspace"
                 >
@@ -257,7 +326,7 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
                 </button>
                 <button
                   onClick={() => handleKeypadPress('0')}
-                  className="py-3 rounded-lg bg-surface-container-low hover:bg-surface-container-high border border-surface-container-high text-on-surface font-telemetry-numeric-lg text-[18px] font-bold transition-all active:scale-95 shadow-sm"
+                  className="py-3 rounded-lg bg-surface-container-low hover:bg-surface-container-high border border-surface-container-high text-on-surface font-telemetry-numeric-lg text-[18px] font-bold transition-all active:scale-95 shadow-sm cursor-pointer"
                   type="button"
                 >
                   0
@@ -265,7 +334,7 @@ export default function TaskDigitSpan({ onComplete, onRoundUpdate }) {
                 <button
                   onClick={() => handleKeypadPress('submit')}
                   disabled={!userInput}
-                  className="py-3 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-body-sm text-[13px] font-bold transition-all active:scale-95 flex items-center justify-center disabled:opacity-40 shadow-sm"
+                  className="py-3 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-body-sm text-[13px] font-bold transition-all active:scale-95 flex items-center justify-center disabled:opacity-40 shadow-sm cursor-pointer"
                   type="button"
                   title="Submit"
                 >
