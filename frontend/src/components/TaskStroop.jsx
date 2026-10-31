@@ -19,8 +19,10 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
   const trialsDataRef = useRef([]);
   const stimulusStartRef = useRef(0);
   const timeoutRef = useRef(null);
+  const currentStimulusRef = useRef(null);
+  const phaseRef = useRef('instructions');
 
-  const presentationDurationRef = useRef(1500);
+  const presentationDurationRef = useRef(2800);
   const consecutiveCorrectRef = useRef(0);
 
   // Initialize round tracking on mount
@@ -29,6 +31,16 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
       onRoundUpdate(1, TOTAL_TRIALS);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
   }, []);
 
   // Generate randomized stimulus (65% incongruent, 35% congruent)
@@ -43,80 +55,24 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
       colorIdx = rand;
     }
 
+    const wordName = t(COLOR_OPTIONS[textIdx].nameKey) || COLOR_OPTIONS[textIdx].defaultName;
+    const correctInkName = t(COLOR_OPTIONS[colorIdx].nameKey) || COLOR_OPTIONS[colorIdx].defaultName;
+
     return {
-      word: COLOR_OPTIONS[textIdx].name,
+      word: wordName,
       inkColor: COLOR_OPTIONS[colorIdx].color,
       inkColorClass: COLOR_OPTIONS[colorIdx].bg,
       correctKey: COLOR_OPTIONS[colorIdx].key,
-      correctColorName: COLOR_OPTIONS[colorIdx].name,
+      correctColorName: correctInkName,
       isCongruent: textIdx === colorIdx,
     };
-  }, []);
+  }, [t]);
 
-  const runTrial = useCallback((index) => {
-    const stim = generateStimulus();
-    setCurrentStimulus(stim);
-    setFeedback(null);
-    setPhase('trial');
-    stimulusStartRef.current = performance.now();
-
-    if (onRoundUpdate) {
-      onRoundUpdate(index + 1, TOTAL_TRIALS);
+  const finishTask = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
-
-    timeoutRef.current = setTimeout(() => {
-      handleResponse('TIMEOUT');
-    }, presentationDurationRef.current);
-  }, [generateStimulus, onRoundUpdate]);
-
-  const handleResponse = useCallback((keyChosen) => {
-    clearTimeout(timeoutRef.current);
-    if (phase !== 'trial' || !currentStimulus) return;
-
-    const rt = performance.now() - stimulusStartRef.current;
-    const isCorrect = keyChosen.toLowerCase() === currentStimulus.correctKey;
-
-    if (isCorrect) {
-      consecutiveCorrectRef.current += 1;
-      if (consecutiveCorrectRef.current >= 3) {
-        presentationDurationRef.current = Math.max(presentationDurationRef.current - 100, 800);
-        consecutiveCorrectRef.current = 0;
-      }
-    } else {
-      consecutiveCorrectRef.current = 0;
-      presentationDurationRef.current = Math.min(presentationDurationRef.current + 80, 1600);
-    }
-
-    trialsDataRef.current.push({
-      isCongruent: currentStimulus.isCongruent,
-      rt: keyChosen === 'TIMEOUT' ? 1500 : Math.round(rt),
-      correct: isCorrect,
-      timeout: keyChosen === 'TIMEOUT',
-    });
-
-    setFeedback({
-      correct: isCorrect,
-      text: isCorrect
-        ? `Correct (${Math.round(rt)} ms)`
-        : keyChosen === 'TIMEOUT'
-        ? 'Time Expired!'
-        : `Miss! Ink color was ${currentStimulus.correctColorName}`,
-    });
-    setPhase('feedback');
-
-    const nextIndex = trialIndex + 1;
-    if (nextIndex < TOTAL_TRIALS) {
-      setTrialIndex(nextIndex);
-      setTimeout(() => {
-        runTrial(nextIndex);
-      }, 700);
-    } else {
-      setPhase('finished');
-      finishTask();
-    }
-  }, [phase, currentStimulus, trialIndex, runTrial]);
-
-  const finishTask = () => {
     const trials = trialsDataRef.current;
     const congruentTrials = trials.filter((t) => t.isCongruent && t.correct);
     const incongruentTrials = trials.filter((t) => !t.isCongruent && t.correct);
@@ -138,17 +94,95 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
         accuracy: Number(accuracy.toFixed(2)),
         total_trials: trials.length,
       });
-    }, 1200);
-  };
+    }, 1000);
+  }, [onComplete]);
+
+  const handleResponse = useCallback((keyChosen) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    const stim = currentStimulusRef.current;
+    if (phaseRef.current !== 'trial' || !stim) return;
+
+    phaseRef.current = 'feedback';
+    const rt = performance.now() - stimulusStartRef.current;
+    const isCorrect = keyChosen.toLowerCase() === stim.correctKey.toLowerCase();
+
+    if (isCorrect) {
+      consecutiveCorrectRef.current += 1;
+      if (consecutiveCorrectRef.current >= 3) {
+        presentationDurationRef.current = Math.max(presentationDurationRef.current - 150, 1200);
+        consecutiveCorrectRef.current = 0;
+      }
+    } else {
+      consecutiveCorrectRef.current = 0;
+      presentationDurationRef.current = Math.min(presentationDurationRef.current + 150, 3200);
+    }
+
+    trialsDataRef.current.push({
+      isCongruent: stim.isCongruent,
+      rt: keyChosen === 'TIMEOUT' ? presentationDurationRef.current : Math.round(rt),
+      correct: isCorrect,
+      timeout: keyChosen === 'TIMEOUT',
+    });
+
+    setFeedback({
+      correct: isCorrect,
+      text: isCorrect
+        ? `Correct (${Math.round(rt)} ms)`
+        : keyChosen === 'TIMEOUT'
+        ? 'Time Expired!'
+        : `Miss! Ink color was ${stim.correctColorName}`,
+    });
+    setPhase('feedback');
+
+    const nextIndex = trialsDataRef.current.length;
+    if (nextIndex < TOTAL_TRIALS) {
+      setTrialIndex(nextIndex);
+      setTimeout(() => {
+        runTrial(nextIndex);
+      }, 700);
+    } else {
+      setPhase('finished');
+      phaseRef.current = 'finished';
+      finishTask();
+    }
+  }, [finishTask]);
+
+  const runTrial = useCallback((index) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    const stim = generateStimulus();
+    currentStimulusRef.current = stim;
+    phaseRef.current = 'trial';
+
+    setCurrentStimulus(stim);
+    setFeedback(null);
+    setPhase('trial');
+    stimulusStartRef.current = performance.now();
+
+    if (onRoundUpdate) {
+      onRoundUpdate(index + 1, TOTAL_TRIALS);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      handleResponse('TIMEOUT');
+    }, presentationDurationRef.current);
+  }, [generateStimulus, handleResponse, onRoundUpdate]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (phase === 'instructions' && (e.code === 'Space' || e.code === 'Enter')) {
+      if (phaseRef.current === 'instructions' && (e.code === 'Space' || e.code === 'Enter')) {
         e.preventDefault();
         runTrial(0);
         return;
       }
-      if (phase !== 'trial') return;
+      if (phaseRef.current !== 'trial') return;
       const key = e.key.toLowerCase();
       if (['d', 'f', 'j', 'k'].includes(key)) {
         e.preventDefault();
@@ -157,7 +191,7 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, handleResponse, runTrial]);
+  }, [handleResponse, runTrial]);
 
   // Derived stats for display
   const completedCount = trialsDataRef.current.length;
@@ -182,7 +216,19 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
 
         {/* Center Stimulus Core Focus Area */}
         <div className="flex flex-col items-center max-w-xl my-auto py-4 relative z-10 w-full">
-          {phase === 'instructions' ? (
+          {phase === 'finished' ? (
+            <div className="flex flex-col items-center py-8 animate-fadeIn">
+              <div className="w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4 shadow-sm">
+                <span className="material-symbols-outlined text-[36px]">check_circle</span>
+              </div>
+              <h2 className="font-display text-[26px] font-bold text-on-surface mb-1">
+                Color Focus Test Complete!
+              </h2>
+              <p className="text-[14px] text-on-surface-variant font-medium">
+                Calculating cognitive inhibition metrics & moving to next step...
+              </p>
+            </div>
+          ) : phase === 'instructions' ? (
             <div className="flex flex-col items-center">
               <div className="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center text-primary mb-4 shadow-sm">
                 <span className="material-symbols-outlined text-[32px]">psychology</span>
@@ -195,18 +241,18 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
               </p>
               <button
                 onClick={() => runTrial(0)}
-                className="w-full sm:w-auto min-w-[300px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all"
+                className="w-full sm:w-auto min-w-[300px] px-8 py-3.5 rounded-xl bg-primary text-on-primary font-headline-sm text-[16px] font-semibold shadow-md hover:bg-primary-container transition-all cursor-pointer"
                 type="button"
               >
                 <span>{t('startTest')}</span>
               </button>
             </div>
           ) : (
-            <div className="flex flex-col items-center w-full">
+            <div className="flex flex-col items-center w-full animate-fadeIn">
               {/* Central Stroop Stimulus Word */}
               <div className="my-6 py-6 px-12 rounded-2xl bg-surface-container-low border border-surface-container-high/60 shadow-inner flex items-center justify-center min-w-[320px] min-h-[140px]">
                 <span
-                  className="font-display text-[58px] font-extrabold tracking-widest select-none transition-transform"
+                  className="font-display text-[58px] font-black tracking-widest select-none transition-transform uppercase"
                   style={{ color: currentStimulus?.inkColor }}
                 >
                   {currentStimulus?.word}
@@ -232,7 +278,7 @@ export default function TaskStroop({ onComplete, onRoundUpdate }) {
                     key={btn.key}
                     onClick={() => handleResponse(btn.key)}
                     style={{ borderColor: btn.color }}
-                    className="p-3 rounded-xl bg-surface-container-low hover:bg-surface-container-high border-2 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-sm"
+                    className="p-3 rounded-xl bg-surface-container-low hover:bg-surface-container-high border-2 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-sm cursor-pointer"
                     type="button"
                   >
                     <span className="w-5 h-5 rounded-full shadow-sm" style={{ backgroundColor: btn.color }}></span>
